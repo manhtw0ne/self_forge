@@ -1,0 +1,14 @@
+target/
+data/
+server.log
+server-error.log
+
+# Frontend artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/*.log
+
+# Local workspace files
+.vscode/
+.agents/
+.codex/
