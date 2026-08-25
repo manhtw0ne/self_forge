@@ -47,6 +47,10 @@ public class Habit {
 
     private String tags;
 
+    private int sortOrder;
+
+    private String stackGroup;
+
     private Instant createdAt;
 
     protected Habit() {
@@ -111,6 +115,22 @@ public class Habit {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public int getSortOrder() {
+        return sortOrder;
+    }
+
+    public void setSortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
+    }
+
+    public String getStackGroup() {
+        return stackGroup;
+    }
+
+    public void setStackGroup(String stackGroup) {
+        this.stackGroup = stackGroup;
     }
 
     public void update(String name, String description, Difficulty difficulty, Integer targetPerWeek, Integer points, Boolean active) {

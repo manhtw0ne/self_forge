@@ -9,7 +9,10 @@ public record UserResponse(
         String avatarUrl,
         String timezone,
         String motto,
-        Instant createdAt
+        Instant createdAt,
+        String premiumTier,
+        boolean isPremium,
+        Instant premiumExpiresAt
 ) {
     public static UserResponse from(AppUser user) {
         return new UserResponse(
@@ -19,7 +22,10 @@ public record UserResponse(
                 user.getAvatarUrl(),
                 user.getTimezone(),
                 user.getMotto(),
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                user.getPremiumTier().name(),
+                user.isPremium(),
+                user.getPremiumExpiresAt()
         );
     }
 }

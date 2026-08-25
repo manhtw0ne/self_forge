@@ -13,6 +13,7 @@ export default function ProfilePage() {
   });
   const [pwForm, setPwForm] = useState({ oldPassword: '', newPassword: '' });
   const [stats, setStats] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.get('/rewards/progress').then(r => setStats(r.data)).catch(() => {});
@@ -37,6 +38,26 @@ export default function ProfilePage() {
       toast.success('Đã đổi mật khẩu thành công! 🔒');
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Mật khẩu cũ không đúng');
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get('/export/csv', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'selfforge_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('📤 Đã tải xuống file CSV!');
+    } catch {
+      toast.error('Không thể xuất dữ liệu');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -104,20 +125,32 @@ export default function ProfilePage() {
           </form>
         </div>
 
-        {/* Password Card */}
-        <div className="card">
-          <h3 style={{ marginBottom: '1.25rem', fontSize: '1rem' }}>Đổi mật khẩu</h3>
-          <form onSubmit={handleChangePassword}>
-            <div className="form-group">
-              <label className="form-label">Mật khẩu hiện tại</label>
-              <input type="password" className="form-input" value={pwForm.oldPassword} onChange={e => setPwForm({ ...pwForm, oldPassword: e.target.value })} required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Mật khẩu mới</label>
-              <input type="password" className="form-input" value={pwForm.newPassword} onChange={e => setPwForm({ ...pwForm, newPassword: e.target.value })} required />
-            </div>
-            <button type="submit" className="btn btn-primary">Đổi mật khẩu</button>
-          </form>
+        {/* Password + Export Card */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="card">
+            <h3 style={{ marginBottom: '1.25rem', fontSize: '1rem' }}>Đổi mật khẩu</h3>
+            <form onSubmit={handleChangePassword}>
+              <div className="form-group">
+                <label className="form-label">Mật khẩu hiện tại</label>
+                <input type="password" className="form-input" value={pwForm.oldPassword} onChange={e => setPwForm({ ...pwForm, oldPassword: e.target.value })} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Mật khẩu mới</label>
+                <input type="password" className="form-input" value={pwForm.newPassword} onChange={e => setPwForm({ ...pwForm, newPassword: e.target.value })} required />
+              </div>
+              <button type="submit" className="btn btn-primary">Đổi mật khẩu</button>
+            </form>
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>📤 Xuất dữ liệu</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Tải về file CSV chứa tất cả thói quen, check-in (90 ngày), và nhật ký của bạn.
+            </p>
+            <button className="btn btn-secondary" onClick={handleExport} disabled={exporting} style={{ width: '100%' }}>
+              {exporting ? '⏳ Đang xuất...' : '📥 Tải về CSV'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

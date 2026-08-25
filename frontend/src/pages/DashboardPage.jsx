@@ -36,6 +36,27 @@ function formatDate(dateStr) {
   return `${days[d.getDay()]}, ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
 
+function computeCombo(habits) {
+  if (!habits || habits.length === 0) return { multiplier: 1, label: null, allDone: false };
+  const completedCount = habits.filter(h => h.todayStatus === 'COMPLETED').length;
+  const allDone = completedCount === habits.length && habits.length > 0;
+  // Check if all habits have todayStatus (meaning all were checked in some way)
+  const allChecked = habits.every(h => h.todayStatus);
+  
+  if (allDone) {
+    return { multiplier: 1.5, label: 'x1.5', css: 'x15', allDone: true, 
+      text: `🔥 Combo! Hoàn thành tất cả ${habits.length} thói quen → x1.5 điểm!` };
+  }
+  
+  const remaining = habits.length - completedCount;
+  if (remaining > 0 && remaining <= 2 && completedCount > 0) {
+    return { multiplier: 1, label: null, allDone: false,
+      text: `💪 Còn ${remaining} thói quen nữa để đạt Combo x1.5!` };
+  }
+  
+  return { multiplier: 1, label: null, allDone: false };
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +81,8 @@ export default function DashboardPage() {
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
   if (!data) return <div className="empty-state"><p>Không thể tải dữ liệu</p></div>;
 
+  const combo = computeCombo(data.habits);
+
   const checkIn = async (habitId, status) => {
     try {
       await api.post('/check-ins', { habitId, status });
@@ -71,6 +94,12 @@ export default function DashboardPage() {
         SKIPPED: '⏭️ Đã bỏ qua',
       };
       toast.success(msgs[status] || 'Đã cập nhật!');
+      
+      // Check combo after update
+      const newCombo = computeCombo(res.data.habits);
+      if (newCombo.allDone && !combo.allDone) {
+        setTimeout(() => toast.success('🎉 COMBO x1.5! Hoàn thành tất cả thói quen!'), 500);
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Có lỗi xảy ra');
     }
@@ -131,6 +160,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Combo Info */}
+      {combo.text && (
+        <div className={combo.allDone ? 'combo-info' : 'combo-info'} style={combo.allDone ? { background: 'var(--success-bg)', borderColor: 'var(--success)', color: 'var(--success)' } : {}}>
+          {combo.allDone && <span className={`combo-badge ${combo.css}`}>{combo.label}</span>}
+          <span>{combo.text}</span>
+        </div>
+      )}
+
       {/* Quick Actions */}
       <div className="quick-actions">
         <Link to="/habits" className="quick-action-btn">🎯 Quản lý thói quen</Link>
@@ -144,7 +181,10 @@ export default function DashboardPage() {
       <div className="card-grid card-grid-4" style={{ marginBottom: '1.5rem' }}>
         <div className="stat-card slide-in">
           <div className="stat-label">Điểm hôm nay</div>
-          <div className="stat-value">{data.todayScore}</div>
+          <div className="stat-value">
+            {data.todayScore}
+            {combo.allDone && <span style={{ fontSize: '0.6em', color: 'var(--success)' }}> ×1.5</span>}
+          </div>
         </div>
         <div className="stat-card slide-in" style={{ animationDelay: '0.1s' }}>
           <div className="stat-label">Điểm tuần này</div>

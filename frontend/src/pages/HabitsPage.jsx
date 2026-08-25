@@ -2,11 +2,64 @@ import { useEffect, useState } from 'react';
 import { useToast } from '../context/useToast';
 import api from '../api/client';
 
+const HABIT_TEMPLATES = [
+  {
+    icon: '🌅', name: 'Thói quen buổi sáng', desc: 'Bắt đầu ngày mới với năng lượng',
+    habits: [
+      { name: 'Dậy sớm 6h', difficulty: 'MEDIUM', targetPerWeek: 7, tags: 'buổi sáng' },
+      { name: 'Thiền 10 phút', difficulty: 'EASY', targetPerWeek: 7, tags: 'thiền, buổi sáng' },
+      { name: 'Tập thể dục 30 phút', difficulty: 'HARD', targetPerWeek: 5, tags: 'sức khỏe' },
+      { name: 'Uống 1 ly nước ấm', difficulty: 'EASY', targetPerWeek: 7, tags: 'sức khỏe' },
+    ],
+  },
+  {
+    icon: '📚', name: 'Đọc sách mỗi ngày', desc: 'Nâng cao kiến thức liên tục',
+    habits: [
+      { name: 'Đọc sách 20 phút', difficulty: 'MEDIUM', targetPerWeek: 7, tags: 'đọc sách' },
+      { name: 'Ghi chú sách', difficulty: 'EASY', targetPerWeek: 5, tags: 'đọc sách, học tập' },
+    ],
+  },
+  {
+    icon: '💪', name: 'Gym & Sức khỏe', desc: 'Tập luyện khoa học',
+    habits: [
+      { name: 'Tập gym', difficulty: 'HARD', targetPerWeek: 4, tags: 'gym, sức khỏe' },
+      { name: 'Ăn đủ protein', difficulty: 'MEDIUM', targetPerWeek: 7, tags: 'dinh dưỡng' },
+      { name: 'Ngủ đủ 7 tiếng', difficulty: 'MEDIUM', targetPerWeek: 7, tags: 'sức khỏe' },
+      { name: 'Uống 2L nước', difficulty: 'EASY', targetPerWeek: 7, tags: 'sức khỏe' },
+    ],
+  },
+  {
+    icon: '🇬🇧', name: 'Học tiếng Anh', desc: 'Cải thiện ngoại ngữ hàng ngày',
+    habits: [
+      { name: 'Học từ vựng mới', difficulty: 'MEDIUM', targetPerWeek: 6, tags: 'tiếng Anh' },
+      { name: 'Nghe podcast tiếng Anh', difficulty: 'EASY', targetPerWeek: 5, tags: 'tiếng Anh, listening' },
+      { name: 'Viết nhật ký bằng tiếng Anh', difficulty: 'HARD', targetPerWeek: 3, tags: 'tiếng Anh, writing' },
+    ],
+  },
+  {
+    icon: '💻', name: 'Lập trình viên', desc: 'Xây dựng kỹ năng coding',
+    habits: [
+      { name: 'Code ít nhất 1 tiếng', difficulty: 'MEDIUM', targetPerWeek: 6, tags: 'lập trình' },
+      { name: 'Đọc docs/blog tech', difficulty: 'EASY', targetPerWeek: 5, tags: 'lập trình, học tập' },
+      { name: 'Giải 1 bài LeetCode', difficulty: 'HARD', targetPerWeek: 4, tags: 'lập trình, thuật toán' },
+    ],
+  },
+  {
+    icon: '🧘', name: 'Cân bằng tâm trí', desc: 'Chăm sóc sức khỏe tinh thần',
+    habits: [
+      { name: 'Thiền 15 phút', difficulty: 'MEDIUM', targetPerWeek: 7, tags: 'thiền' },
+      { name: 'Viết nhật ký biết ơn', difficulty: 'EASY', targetPerWeek: 7, tags: 'tinh thần' },
+      { name: 'Không mạng xã hội 1 tiếng trước ngủ', difficulty: 'HARD', targetPerWeek: 7, tags: 'digital detox' },
+    ],
+  },
+];
+
 export default function HabitsPage() {
   const [habits, setHabits] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [editHabit, setEditHabit] = useState(null);
   const [filter, setFilter] = useState('all');
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -77,6 +130,21 @@ export default function HabitsPage() {
     }
   };
 
+  const applyTemplate = async (template) => {
+    try {
+      let count = 0;
+      for (const h of template.habits) {
+        await api.post('/habits', h);
+        count++;
+      }
+      toast.success(`📦 Đã tạo ${count} thói quen từ "${template.name}"!`);
+      setShowTemplates(false);
+      load();
+    } catch (err) {
+      toast.error('Có lỗi khi tạo thói quen từ template');
+    }
+  };
+
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
   const filteredHabits = filter === 'all'
@@ -92,7 +160,10 @@ export default function HabitsPage() {
           <h1>🎯 Thói quen</h1>
           <p>Quản lý các thói quen hàng ngày</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>+ Tạo mới</button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-secondary" onClick={() => setShowTemplates(true)}>📦 Templates</button>
+          <button className="btn btn-primary" onClick={openCreate}>+ Tạo mới</button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -111,7 +182,10 @@ export default function HabitsPage() {
         <div className="empty-state">
           <div className="empty-icon">🎯</div>
           <p>{filter !== 'all' ? 'Không có thói quen nào trong danh mục này' : 'Chưa có thói quen nào'}</p>
-          <button className="btn btn-primary" onClick={openCreate}>Tạo thói quen đầu tiên</button>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={openCreate}>Tạo thói quen đầu tiên</button>
+            <button className="btn btn-secondary" onClick={() => setShowTemplates(true)}>📦 Dùng template</button>
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -137,6 +211,37 @@ export default function HabitsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Templates Modal */}
+      {showTemplates && (
+        <div className="modal-overlay" onClick={() => setShowTemplates(false)}>
+          <div className="modal scale-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h2 className="modal-title">📦 Chọn Template</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Tạo nhanh nhiều thói quen cùng lúc từ bộ template có sẵn
+            </p>
+            <div className="template-grid">
+              {HABIT_TEMPLATES.map((t, i) => (
+                <div key={i} className="template-card" onClick={() => applyTemplate(t)}>
+                  <div className="template-card-icon">{t.icon}</div>
+                  <div className="template-card-name">{t.name}</div>
+                  <div className="template-card-desc">{t.desc}</div>
+                  <div className="template-card-habits">
+                    {t.habits.map((h, j) => (
+                      <span key={j} className={`badge badge-${h.difficulty === 'HARD' ? 'danger' : h.difficulty === 'MEDIUM' ? 'warning' : 'success'}`}>
+                        {h.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="modal-actions" style={{ marginTop: '1rem' }}>
+              <button className="btn btn-secondary" onClick={() => setShowTemplates(false)}>Đóng</button>
+            </div>
+          </div>
         </div>
       )}
 

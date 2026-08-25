@@ -26,6 +26,14 @@ public class ApiExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    ProblemDetail handleConflict(IllegalStateException exception) {
+        ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        detail.setTitle("Limit reached");
+        detail.setDetail(exception.getMessage());
+        return detail;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ProblemDetail handleValidation(MethodArgumentNotValidException exception) {
         ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);

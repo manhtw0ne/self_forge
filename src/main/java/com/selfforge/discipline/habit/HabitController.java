@@ -1,6 +1,9 @@
 package com.selfforge.discipline.habit;
 
+import com.selfforge.discipline.auth.AppUser;
 import com.selfforge.discipline.auth.CurrentUserService;
+import com.selfforge.discipline.auth.PremiumController;
+import com.selfforge.discipline.common.RequirePremium;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -24,10 +27,12 @@ import static com.selfforge.discipline.habit.HabitRequests.UpdateHabitRequest;
 public class HabitController {
 
     private final HabitService habitService;
+    private final HabitRepository habitRepository;
     private final CurrentUserService currentUserService;
 
-    public HabitController(HabitService habitService, CurrentUserService currentUserService) {
+    public HabitController(HabitService habitService, HabitRepository habitRepository, CurrentUserService currentUserService) {
         this.habitService = habitService;
+        this.habitRepository = habitRepository;
         this.currentUserService = currentUserService;
     }
 
@@ -39,7 +44,17 @@ public class HabitController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public HabitResponse create(@Valid @RequestBody CreateHabitRequest request, HttpServletRequest servletRequest) {
-        return habitService.create(currentUserService.requireUser(servletRequest), request);
+        AppUser user = currentUserService.requireUser(servletRequest);
+        // Enforce habit limit for free users
+        if (!user.isPremium()) {
+            int activeCount = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId()).size();
+            if (activeCount >= PremiumController.FREE_MAX_HABITS) {
+                throw new IllegalStateException(
+                        "Bạn đã đạt giới hạn " + PremiumController.FREE_MAX_HABITS
+                                + " thói quen. Nâng cấp Premium để tạo không giới hạn!");
+            }
+        }
+        return habitService.create(user, request);
     }
 
     @PatchMapping("/{id}")
@@ -55,5 +70,25 @@ public class HabitController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id, HttpServletRequest servletRequest) {
         habitService.deactivate(currentUserService.requireUser(servletRequest), id);
+    }
+
+    public record ReorderRequest(List<ReorderItem> items) {}
+    public record ReorderItem(Long id, int sortOrder, String stackGroup) {}
+
+    @RequirePremium
+    @PatchMapping("/reorder")
+    public List<HabitResponse> reorder(@RequestBody ReorderRequest request, HttpServletRequest servletRequest) {
+        var user = currentUserService.requireUser(servletRequest);
+        List<Habit> habits = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId());
+        for (var item : request.items()) {
+            habits.stream()
+                    .filter(h -> h.getId().equals(item.id()))
+                    .findFirst()
+                    .ifPresent(h -> {
+                        h.setSortOrder(item.sortOrder());
+                        h.setStackGroup(item.stackGroup());
+                    });
+        }
+        return habitService.listActive(user);
     }
 }

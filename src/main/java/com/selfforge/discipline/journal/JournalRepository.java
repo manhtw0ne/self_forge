@@ -15,4 +15,6 @@ public interface JournalRepository extends JpaRepository<JournalEntry, Long> {
 
     @Query("SELECT j.date FROM JournalEntry j WHERE j.user.id = :userId ORDER BY j.date DESC")
     List<LocalDate> findDatesByUserId(Long userId);
+
+    List<JournalEntry> findByUserIdOrderByDateDesc(Long userId);
 }

@@ -2,6 +2,8 @@ package com.selfforge.discipline.auth;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -33,6 +35,12 @@ public class AppUser {
     private String motto;
 
     private Instant createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PremiumTier premiumTier = PremiumTier.FREE;
+
+    private Instant premiumExpiresAt;
 
     protected AppUser() {
     }
@@ -75,6 +83,36 @@ public class AppUser {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public PremiumTier getPremiumTier() {
+        return premiumTier;
+    }
+
+    public Instant getPremiumExpiresAt() {
+        return premiumExpiresAt;
+    }
+
+    /**
+     * Returns true if the user has an active premium subscription.
+     * LIFETIME users are always premium. PREMIUM users are checked against expiry.
+     */
+    public boolean isPremium() {
+        if (premiumTier == PremiumTier.LIFETIME) return true;
+        if (premiumTier == PremiumTier.PREMIUM && premiumExpiresAt != null) {
+            return premiumExpiresAt.isAfter(Instant.now());
+        }
+        return false;
+    }
+
+    public void activatePremium(PremiumTier tier, Instant expiresAt) {
+        this.premiumTier = tier;
+        this.premiumExpiresAt = expiresAt;
+    }
+
+    public void deactivatePremium() {
+        this.premiumTier = PremiumTier.FREE;
+        this.premiumExpiresAt = null;
     }
 
     public void updateProfile(String displayName, String avatarUrl, String timezone, String motto) {

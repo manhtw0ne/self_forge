@@ -35,6 +35,36 @@
   --glass-border: rgba(99, 102, 241, 0.15);
 }
 
+:root[data-theme="light"] {
+  --bg-primary: #f5f5fa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f0f0f8;
+  --bg-input: #f0f0f5;
+  --border-color: #d8d8e8;
+  --text-primary: #1a1a2e;
+  --text-secondary: #555577;
+  --text-muted: #8888aa;
+  --accent-primary: #6366f1;
+  --accent-secondary: #8b5cf6;
+  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --accent-glow: rgba(99, 102, 241, 0.15);
+  --success: #16a34a;
+  --success-bg: rgba(22, 163, 74, 0.1);
+  --warning: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.1);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.1);
+  --info: #2563eb;
+  --info-bg: rgba(37, 99, 235, 0.1);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.1);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(99, 102, 241, 0.15);
+}
+
 *, *::before, *::after {
   margin: 0;
   padding: 0;
@@ -1542,4 +1572,151 @@ a:hover {
   .mood-emoji {
     font-size: 1.4rem;
   }
+}
+
+/* ========== Theme Toggle ========== */
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 0.75rem;
+  transition: var(--transition);
+  font-family: 'Inter', sans-serif;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--accent-primary);
+}
+
+.theme-toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--border-color);
+  position: relative;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+
+.theme-toggle-thumb.light {
+  left: 22px;
+}
+
+.theme-toggle-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ========== Template Modal ========== */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.template-card {
+  padding: 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.template-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.template-card-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.template-card-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.template-card-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.template-card-habits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.template-card-habits .badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+}
+
+/* ========== Combo Badge ========== */
+.combo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-xl);
+  font-size: 0.8rem;
+  font-weight: 700;
+  animation: combo-pulse 2s ease-in-out infinite;
+}
+
+.combo-badge.x15 {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: white;
+}
+
+.combo-badge.x20 {
+  background: linear-gradient(135deg, #ef4444, #ec4899);
+  color: white;
+}
+
+@keyframes combo-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.combo-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  color: var(--warning);
+  font-weight: 500;
 }

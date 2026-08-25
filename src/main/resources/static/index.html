@@ -1,143 +1,15 @@
 <!doctype html>
 <html lang="vi">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SelfForge - Kỷ luật bản thân</title>
-    <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-<main class="app-shell">
-    <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">SF</div>
-            <div>
-                <strong>SelfForge</strong>
-                <span>Kỷ luật bản thân</span>
-            </div>
-        </div>
-
-        <nav class="nav-list" aria-label="Điều hướng chính">
-            <button class="nav-item active" data-view="dashboard">Bảng điều khiển</button>
-            <button class="nav-item" data-view="habits">Thói quen</button>
-            <button class="nav-item" data-view="challenges">Thử thách</button>
-            <button class="nav-item" data-view="rewards">Huy hiệu</button>
-            <button class="nav-item" data-view="journal">Nhật ký</button>
-        </nav>
-
-        <section class="auth-panel" id="authPanel">
-            <p class="eyebrow">Tài khoản</p>
-            <input id="emailInput" type="email" value="demo@selfforge.local" autocomplete="email" aria-label="Email">
-            <input id="passwordInput" type="password" value="password123" autocomplete="current-password" aria-label="Mật khẩu">
-            <button class="primary-button" id="loginButton">Đăng nhập</button>
-            <button class="ghost-button" id="registerButton">Tạo tài khoản</button>
-            <p class="hint">Tài khoản mẫu: demo@selfforge.local / password123</p>
-        </section>
-
-        <section class="profile-panel hidden" id="profilePanel">
-            <p class="eyebrow">Đang dùng</p>
-            <strong id="profileName">-</strong>
-            <span id="profileEmail">-</span>
-            <button class="ghost-button" id="logoutButton">Đăng xuất</button>
-        </section>
-    </aside>
-
-    <section class="workspace">
-        <header class="topbar">
-            <div>
-                <p class="eyebrow">Hôm nay</p>
-                <h1 id="viewTitle">Bảng điều khiển</h1>
-            </div>
-            <div class="status-pill" id="appStatus">Sẵn sàng</div>
-        </header>
-
-        <section class="view" id="dashboardView">
-            <div class="metric-grid">
-                <article class="metric">
-                    <span>Điểm hôm nay</span>
-                    <strong id="todayScore">0</strong>
-                </article>
-                <article class="metric">
-                    <span>Điểm tuần</span>
-                    <strong id="weekScore">0</strong>
-                </article>
-                <article class="metric">
-                    <span>Tỷ lệ tuần</span>
-                    <strong id="weekRate">0%</strong>
-                </article>
-                <article class="metric">
-                    <span>Thói quen</span>
-                    <strong id="habitCount">0</strong>
-                </article>
-            </div>
-            <div class="section-head">
-                <h2>Tiến độ hôm nay</h2>
-                <button class="ghost-button" id="refreshButton">Làm mới</button>
-            </div>
-            <div class="list" id="dashboardHabits"></div>
-        </section>
-
-        <section class="view hidden" id="habitsView">
-            <form class="form-row" id="habitForm">
-                <input id="habitName" required placeholder="Tên thói quen">
-                <select id="habitDifficulty" aria-label="Độ khó">
-                    <option value="EASY">Dễ</option>
-                    <option value="MEDIUM" selected>Vừa</option>
-                    <option value="HARD">Khó</option>
-                </select>
-                <input id="habitTarget" type="number" min="1" max="7" value="5" aria-label="Mục tiêu mỗi tuần">
-                <select id="habitCategory" aria-label="Danh mục"></select>
-                <button class="primary-button" type="submit">Thêm</button>
-            </form>
-            <div class="list" id="habitList"></div>
-        </section>
-
-        <section class="view hidden" id="challengesView">
-            <form class="form-row" id="challengeForm">
-                <select id="challengeHabit" required aria-label="Thói quen cho thử thách"></select>
-                <input id="challengeName" required placeholder="Tên thử thách">
-                <select id="challengeDays" aria-label="Số ngày thử thách">
-                    <option value="7">7 ngày</option>
-                    <option value="21">21 ngày</option>
-                    <option value="30">30 ngày</option>
-                    <option value="60">60 ngày</option>
-                    <option value="90">90 ngày</option>
-                </select>
-                <button class="primary-button" type="submit">Bắt đầu</button>
-            </form>
-            <div class="list" id="challengeList"></div>
-        </section>
-
-        <section class="view hidden" id="rewardsView">
-            <div class="reward-summary">
-                <article class="metric">
-                    <span>Cấp độ</span>
-                    <strong id="levelValue">1</strong>
-                </article>
-                <article class="metric">
-                    <span>Tổng XP</span>
-                    <strong id="xpValue">0</strong>
-                </article>
-                <div class="progress-block">
-                    <span>Tiến độ cấp hiện tại</span>
-                    <div class="progress-track"><div id="levelProgress" class="progress-bar"></div></div>
-                </div>
-            </div>
-            <div class="list badge-grid" id="achievementList"></div>
-        </section>
-
-        <section class="view hidden" id="journalView">
-            <form class="journal-form" id="journalForm">
-                <textarea id="journalWin" placeholder="Hôm nay bạn đã thắng điều gì?"></textarea>
-                <textarea id="journalObstacle" placeholder="Điều gì làm bạn mất nhịp?"></textarea>
-                <textarea id="journalLesson" placeholder="Bài học rút ra"></textarea>
-                <textarea id="journalFocus" placeholder="Trọng tâm ngày mai"></textarea>
-                <button class="primary-button" type="submit">Lưu nhật ký</button>
-            </form>
-        </section>
-    </section>
-</main>
-
-<script src="/app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="SelfForge - Ung dung ky luat ban than. Theo doi thoi quen, xay dung ky luat moi ngay." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>" />
+    <title>SelfForge — Ky luat ban than</title>
+    <script type="module" crossorigin src="/assets/index-V7KEpC67.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CXw_wOmE.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

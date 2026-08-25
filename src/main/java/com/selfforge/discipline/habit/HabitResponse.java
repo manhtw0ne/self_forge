@@ -14,6 +14,8 @@ public record HabitResponse(
         String categoryName,
         String categoryColor,
         String tags,
+        int sortOrder,
+        String stackGroup,
         Instant createdAt
 ) {
     static HabitResponse from(Habit habit) {
@@ -29,8 +31,9 @@ public record HabitResponse(
                 habit.getCategory() != null ? habit.getCategory().getName() : null,
                 habit.getCategory() != null ? habit.getCategory().getColor() : null,
                 habit.getTags(),
+                habit.getSortOrder(),
+                habit.getStackGroup(),
                 habit.getCreatedAt()
         );
     }
 }
-
