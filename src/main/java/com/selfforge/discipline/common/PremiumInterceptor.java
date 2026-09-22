@@ -40,13 +40,8 @@ public class PremiumInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        try {
-            AppUser user = currentUserService.requireUser(request);
-            if (user.isPremium()) {
-                return true;
-            }
-        } catch (Exception e) {
-            // Auth errors will be handled by the normal auth flow
+        AppUser user = currentUserService.requireUser(request);
+        if (user.isPremium()) {
             return true;
         }
 

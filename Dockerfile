@@ -27,7 +27,7 @@ COPY src/ ./src/
 COPY --from=frontend-build /app/frontend/dist/ ./src/main/resources/static/
 
 # Build the JAR
-RUN mvn package -DskipTests -B
+RUN mvn verify -B
 
 # ============================================
 # Stage 3: Production Runtime

@@ -1,6 +1,15 @@
 # SelfForge
 
+> Chưa sẵn sàng mở public. Xem [đánh giá](docs/PRODUCTION_READINESS.md), [kế hoạch nâng cấp](docs/UPGRADE_EXECUTION_PLAN.md), [kết quả](docs/UPGRADE_RESULTS.md) và [runbook deploy](docs/DEPLOY_RUNBOOK.md).
+
 Backend Java/Spring Boot cho ứng dụng kỷ luật bản thân. Project hiện có REST API và giao diện web tĩnh chạy trực tiếp cùng Spring Boot.
+
+## Hướng dẫn deploy từng bước
+
+- [Render Free + Neon Free — ưu tiên khi thử nghiệm, tiết kiệm](docs/DEPLOY_RENDER_NEON.md).
+- [Fly.io + Neon — trả phí theo tài nguyên](docs/DEPLOY_FLY_NEON.md).
+
+Migration PostgreSQL V1 đã có; database mới sẽ được tạo bảng tự động khi chạy profile `prod`. Xem [hướng dẫn migration](docs/DATABASE_MIGRATIONS.md) trước khi kết nối database đã có dữ liệu.
 
 ## Chức năng
 
@@ -98,5 +107,5 @@ Password: password123
 
 ```powershell
 mvn compile
-mvn -Pwith-tests test
+mvn verify
 ```

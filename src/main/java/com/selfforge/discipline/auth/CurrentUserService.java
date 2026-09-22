@@ -13,11 +13,15 @@ public class CurrentUserService {
     }
 
     public AppUser requireUser(HttpServletRequest request) {
+        return authService.authenticate(token(request));
+    }
+
+    public String token(HttpServletRequest request) {
         String token = bearerToken(request);
         if (token == null) {
             token = request.getHeader("X-Auth-Token");
         }
-        return authService.authenticate(token);
+        return token;
     }
 
     private String bearerToken(HttpServletRequest request) {

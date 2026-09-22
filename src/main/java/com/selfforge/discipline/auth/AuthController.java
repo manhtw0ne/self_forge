@@ -36,6 +36,12 @@ public class AuthController {
         return authService.login(request);
     }
 
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(HttpServletRequest request) {
+        authService.logout(currentUserService.token(request));
+    }
+
     @GetMapping("/me")
     public UserResponse me(HttpServletRequest request) {
         return UserResponse.from(currentUserService.requireUser(request));

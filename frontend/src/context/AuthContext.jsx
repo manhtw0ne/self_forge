@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
     if (token) {
       api.get('/auth/me')
         .then((res) => setUser(res.data))
-        .catch(() => localStorage.removeItem('sf_token'))
+        .catch((err) => { if (err.response?.status === 401) localStorage.removeItem('sf_token'); })
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
@@ -32,9 +32,15 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
-  const logout = () => {
-    localStorage.removeItem('sf_token');
-    setUser(null);
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Local logout still works offline; server revocation requires connectivity.
+    } finally {
+      localStorage.removeItem('sf_token');
+      setUser(null);
+    }
   };
 
   const refreshUser = async () => {

@@ -24,7 +24,10 @@ public class SecurityHeadersFilter implements Filter {
         HttpServletResponse httpResponse = (HttpServletResponse) response;
         httpResponse.setHeader("X-Content-Type-Options", "nosniff");
         httpResponse.setHeader("X-Frame-Options", "DENY");
-        httpResponse.setHeader("X-XSS-Protection", "1; mode=block");
+        if (((jakarta.servlet.http.HttpServletRequest) request).getRequestURI().startsWith("/api/")) {
+            httpResponse.setHeader("Cache-Control", "no-store");
+        }
+        httpResponse.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
         httpResponse.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
         chain.doFilter(request, httpResponse);
     }

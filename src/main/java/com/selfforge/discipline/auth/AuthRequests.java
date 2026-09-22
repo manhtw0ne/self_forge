@@ -10,15 +10,15 @@ public final class AuthRequests {
     }
 
     public record RegisterRequest(
-            @Email @NotBlank String email,
-            @NotBlank String displayName,
-            @Size(min = 8) String password
+            @Email @NotBlank @Size(max = 254) String email,
+            @NotBlank @Size(max = 100) String displayName,
+            @NotBlank @Size(min = 8, max = 128) String password
     ) {
     }
 
     public record LoginRequest(
-            @Email @NotBlank String email,
-            @NotBlank String password
+            @Email @NotBlank @Size(max = 254) String email,
+            @NotBlank @Size(max = 128) String password
     ) {
     }
 }

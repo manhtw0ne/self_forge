@@ -79,6 +79,12 @@ public class AuthService {
                 )));
     }
 
+    public void logout(String token) {
+        if (token != null && !token.isBlank()) {
+            sessionRepository.deleteByTokenHash(tokenService.hash(token));
+        }
+    }
+
     private AuthResponse createSession(AppUser user) {
         String token = tokenService.newToken();
         Instant expiresAt = Instant.now().plus(30, ChronoUnit.DAYS);

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 
+@org.springframework.transaction.annotation.Transactional
 @RestController
 @RequestMapping("/api/goals")
 public class GoalController {

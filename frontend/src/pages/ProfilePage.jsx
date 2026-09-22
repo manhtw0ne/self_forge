@@ -4,7 +4,7 @@ import { useToast } from '../context/useToast';
 import api from '../api/client';
 
 export default function ProfilePage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const toast = useToast();
   const [form, setForm] = useState({
     displayName: user?.displayName || '',
@@ -35,7 +35,8 @@ export default function ProfilePage() {
     try {
       await api.patch('/profile/password', pwForm);
       setPwForm({ oldPassword: '', newPassword: '' });
-      toast.success('Đã đổi mật khẩu thành công! 🔒');
+      toast.success('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
+      await logout();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Mật khẩu cũ không đúng');
     }

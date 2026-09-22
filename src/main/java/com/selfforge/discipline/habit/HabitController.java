@@ -77,6 +77,7 @@ public class HabitController {
 
     @RequirePremium
     @PatchMapping("/reorder")
+    @org.springframework.transaction.annotation.Transactional
     public List<HabitResponse> reorder(@RequestBody ReorderRequest request, HttpServletRequest servletRequest) {
         var user = currentUserService.requireUser(servletRequest);
         List<Habit> habits = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId());

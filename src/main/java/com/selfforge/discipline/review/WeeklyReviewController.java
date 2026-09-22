@@ -13,6 +13,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 
 @RequirePremium
+@org.springframework.transaction.annotation.Transactional
 @RestController
 @RequestMapping("/api/weekly-review")
 public class WeeklyReviewController {

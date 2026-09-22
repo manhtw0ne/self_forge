@@ -108,7 +108,6 @@ public class RewardService {
         }
     }
 
-    @Transactional(readOnly = true)
     public RewardResponse.UserProgressResponse getUserProgress(AppUser user) {
         UserLevel level = getOrCreateLevel(user);
         double progress = level.getNextLevelXp() == 0 ? 1.0 :

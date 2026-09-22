@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Manages premium subscription status and provides usage limits info.
@@ -23,16 +22,13 @@ import java.time.temporal.ChronoUnit;
 public class PremiumController {
 
     private final CurrentUserService currentUserService;
-    private final AppUserRepository userRepository;
     private final HabitRepository habitRepository;
     private final GoalRepository goalRepository;
 
     public PremiumController(CurrentUserService currentUserService,
-                             AppUserRepository userRepository,
                              HabitRepository habitRepository,
                              GoalRepository goalRepository) {
         this.currentUserService = currentUserService;
-        this.userRepository = userRepository;
         this.habitRepository = habitRepository;
         this.goalRepository = goalRepository;
     }
@@ -74,32 +70,13 @@ public class PremiumController {
     }
 
     /**
-     * Activates premium for the current user (admin/webhook use).
-     * In production, this would be called by a payment webhook.
+     * Client-side activation stays disabled until verified billing is implemented.
      */
     @PostMapping("/activate")
     public PremiumStatusResponse activate(@RequestBody ActivateRequest req, HttpServletRequest request) {
-        AppUser user = currentUserService.requireUser(request);
-
-        PremiumTier tier;
-        try {
-            tier = PremiumTier.valueOf(req.tier().toUpperCase());
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid tier: " + req.tier());
-        }
-
-        if (tier == PremiumTier.FREE) {
-            user.deactivatePremium();
-        } else if (tier == PremiumTier.LIFETIME) {
-            user.activatePremium(PremiumTier.LIFETIME, null);
-        } else {
-            int days = req.days() != null && req.days() > 0 ? req.days() : 30;
-            Instant expiresAt = Instant.now().plus(days, ChronoUnit.DAYS);
-            user.activatePremium(PremiumTier.PREMIUM, expiresAt);
-        }
-
-        userRepository.save(user);
-        return status(request);
+        currentUserService.requireUser(request);
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Premium activation requires a verified payment integration");
     }
 
     public record ActivateRequest(String tier, Integer days) {}

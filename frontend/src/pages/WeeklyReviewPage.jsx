@@ -174,6 +174,7 @@ export default function WeeklyReviewPage() {
           )
         )}
       </div>
+    </div>
     </PremiumGate>
   );
 }
