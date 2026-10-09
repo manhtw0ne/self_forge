@@ -60,7 +60,7 @@ public class CustomRewardController {
         CustomReward reward = rewardRepository.findByIdAndUserId(id, user.getId())
                 .orElseThrow(() -> new EntityNotFoundException("Reward not found"));
         if (reward.isClaimed()) {
-            throw new IllegalStateException("Phần thưởng đã được nhận rồi");
+            return RewardResponse.from(reward);
         }
         // Check XP balance
         var level = rewardService.getUserProgress(user);

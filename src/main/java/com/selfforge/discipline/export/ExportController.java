@@ -1,6 +1,7 @@
 package com.selfforge.discipline.export;
 
 import com.selfforge.discipline.auth.AppUser;
+import com.selfforge.discipline.common.UserTime;
 import com.selfforge.discipline.auth.CurrentUserService;
 import com.selfforge.discipline.checkin.DailyCheckIn;
 import com.selfforge.discipline.checkin.DailyCheckInRepository;
@@ -24,19 +25,23 @@ import java.util.List;
 @RequestMapping("/api/export")
 public class ExportController {
 
+    private final UserTime userTime;
+
     private final CurrentUserService currentUserService;
     private final HabitRepository habitRepository;
     private final DailyCheckInRepository checkInRepository;
     private final JournalRepository journalRepository;
 
     public ExportController(CurrentUserService currentUserService, HabitRepository habitRepository,
-                            DailyCheckInRepository checkInRepository, JournalRepository journalRepository) {
+                            DailyCheckInRepository checkInRepository, JournalRepository journalRepository, UserTime userTime) {
+        this.userTime = userTime;
         this.currentUserService = currentUserService;
         this.habitRepository = habitRepository;
         this.checkInRepository = checkInRepository;
         this.journalRepository = journalRepository;
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     @GetMapping("/csv")
     public void exportCsv(HttpServletRequest request, HttpServletResponse response) throws Exception {
         AppUser user = currentUserService.requireUser(request);
@@ -63,8 +68,8 @@ public class ExportController {
         // Section 2: Check-ins (last 90 days)
         writer.println("=== CHECK-IN (90 NGÀY) ===");
         writer.println("Ngày,Thói quen,Trạng thái,Ghi chú");
-        LocalDate end = LocalDate.now();
-        LocalDate start = end.minusDays(90);
+        LocalDate end = userTime.today(user);
+        LocalDate start = end.minusDays(89);
         List<DailyCheckIn> checkIns = checkInRepository
                 .findByHabit_User_IdAndDateBetweenOrderByDateAsc(user.getId(), start, end);
         for (DailyCheckIn c : checkIns) {
@@ -87,8 +92,5 @@ public class ExportController {
         writer.flush();
     }
 
-    private String esc(String s) {
-        if (s == null) return "";
-        return s.replace("\"", "\"\"").replace("\n", " ").replace("\r", "");
-    }
+    private String esc(String s) { return CsvText.escape(s); }
 }

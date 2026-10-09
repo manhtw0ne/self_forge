@@ -10,25 +10,26 @@ public final class HabitRequests {
     }
 
     public record CreateHabitRequest(
-            @NotBlank String name,
-            String description,
+            @NotBlank @jakarta.validation.constraints.Size(max = 255) String name,
+            @jakarta.validation.constraints.Size(max = 255) String description,
             Difficulty difficulty,
             @Min(1) @Max(7) Integer targetPerWeek,
             @Min(1) Integer points,
-            Long categoryId,
-            String tags
+            @jakarta.validation.constraints.Positive Long categoryId,
+            @jakarta.validation.constraints.Size(max = 255) String tags
     ) {
     }
 
     public record UpdateHabitRequest(
-            String name,
-            String description,
+            @jakarta.validation.constraints.Size(max = 255) String name,
+            @jakarta.validation.constraints.Size(max = 255) String description,
             Difficulty difficulty,
             @Min(1) @Max(7) Integer targetPerWeek,
             @Min(1) Integer points,
             Boolean active,
-            Long categoryId,
-            String tags
+            @jakarta.validation.constraints.Positive Long categoryId,
+            @jakarta.validation.constraints.Size(max = 255) String tags,
+            Boolean clearCategory
     ) {
     }
 }

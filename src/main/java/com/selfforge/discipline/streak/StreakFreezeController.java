@@ -26,18 +26,19 @@ public class StreakFreezeController {
         this.currentUserService = currentUserService;
     }
 
-    public record UseFreezeRequest(Long habitId, LocalDate date) {}
+    public record UseFreezeRequest(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Positive Long habitId, LocalDate date) {}
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public StreakFreezeResponse useFreeze(@RequestBody UseFreezeRequest request, HttpServletRequest servletRequest) {
+    public StreakFreezeResponse useFreeze(@jakarta.validation.Valid @RequestBody UseFreezeRequest request, HttpServletRequest servletRequest) {
         return freezeService.useFreeze(currentUserService.requireUser(servletRequest), request.habitId(), request.date());
     }
 
     @GetMapping("/remaining")
     public Map<String, Integer> remaining(HttpServletRequest servletRequest) {
-        int remaining = freezeService.remainingFreezes(currentUserService.requireUser(servletRequest));
-        return Map.of("remaining", remaining, "max", 2);
+        var user = currentUserService.requireUser(servletRequest);
+        int remaining = freezeService.remainingFreezes(user);
+        return Map.of("remaining", remaining, "max", freezeService.maxFreezes(user));
     }
 
     @GetMapping("/history")

@@ -1,3 +1,4 @@
+import { useLanguage } from '../context/useLanguage';
 import { useNavigate } from 'react-router-dom';
 import { usePremium } from '../context/PremiumContext';
 
@@ -8,6 +9,7 @@ import { usePremium } from '../context/PremiumContext';
  * - If user is premium, children render normally
  */
 export default function PremiumGate({ children, mode = 'page', feature = '' }) {
+  const { t } = useLanguage();
   const { isPremium } = usePremium();
   const navigate = useNavigate();
 
@@ -19,18 +21,18 @@ export default function PremiumGate({ children, mode = 'page', feature = '' }) {
     return (
       <div className="premium-gate premium-gate-page fade-in">
         <div className="premium-gate-content">
-          <span className="premium-gate-icon">👑</span>
-          <h2>Tính năng Premium</h2>
+          <span className="premium-eyebrow">SelfForge Premium</span>
+          <h2>{t("Tính năng Premium")}</h2>
           <p className="premium-gate-desc">
             {feature
-              ? `"${feature}" là tính năng dành cho người dùng Premium.`
-              : 'Tính năng này dành cho người dùng Premium.'}
+              ? t('"{feature}" là tính năng dành cho người dùng Premium.', { feature: t(feature) })
+              : t('Tính năng này dành cho người dùng Premium.')}
           </p>
           <p className="premium-gate-sub">
-            Nâng cấp để mở khóa toàn bộ tính năng nâng cao!
+            {t('Nâng cấp để mở khóa toàn bộ tính năng nâng cao!')}
           </p>
           <button className="btn btn-premium" onClick={() => navigate('/premium')}>
-            ⭐ Nâng cấp Premium
+            {t('Xem gói Premium')}
           </button>
         </div>
       </div>
@@ -41,13 +43,13 @@ export default function PremiumGate({ children, mode = 'page', feature = '' }) {
   return (
     <div className="premium-gate premium-gate-section">
       <div className="premium-gate-section-overlay">
-        <span className="premium-gate-lock">🔒</span>
+
         <span className="premium-gate-label">Premium</span>
         <button className="btn btn-premium btn-sm" onClick={() => navigate('/premium')}>
-          Nâng cấp
+          {t('Nâng cấp')}
         </button>
       </div>
-      <div className="premium-gate-blurred">
+      <div className="premium-gate-blurred" inert aria-hidden="true">
         {children}
       </div>
     </div>

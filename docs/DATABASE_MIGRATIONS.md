@@ -1,12 +1,32 @@
 # Migration PostgreSQL — SelfForge
 
-Cập nhật 20/09/2026. Migration V1 đã được thêm tại `src/main/resources/db/migration/postgresql/V1__initial_schema.sql`.
+Cập nhật 22/09/2026. Có V1 tạo schema ban đầu và V2 bổ sung snapshot điểm, lịch sử điều chỉnh XP check-in và trạng thái hoàn phạt.
+
+## V5 — OTP đăng ký
+
+26/09/2026: registration_code lưu challenge theo email; app_user.email_verified_at nullable phân biệt tài khoản đã xác minh bằng luồng mới. Tài khoản cũ giữ nguyên. Đã kiểm tra V1–V5 bằng H2 qua Flyway, chưa chạy PostgreSQL V5. Không sửa migration đã áp dụng.
+
+## V4 — OTP quên mật khẩu
+
+Ngày 26/09/2026: thêm bảng password_reset_code (mỗi tài khoản một bản ghi hash OTP, hạn dùng và hạn mức). Không thay dữ liệu tài khoản cũ. Đã kiểm tra schema V4 trên H2 PostgreSQL mode; PostgreSQL thực tế đợt 11 mới xác nhận V1–V3. Cần chạy lại profile postgres-tests trước phát hành V4.
+
+## V3 — Chống cộng tiến độ mục tiêu lặp
+
+Cập nhật 24/09/2026: V3 thêm goal_progress_receipt với ràng buộc unique (goal_id, request_key). Không sửa dữ liệu mục tiêu hiện có. API dùng requestId để retry an toàn; API cũ thiếu mã vẫn hoạt động nhưng không được chống lặp. Receipt và tiến độ được lưu cùng giao dịch.
+
+Đã kiểm chứng schema mới, nâng cấp từ V1 và migration chạy lại trên H2 qua Flyway (94 test toàn bộ). Đợt 11 ngày 24/09/2026 đã chạy thành công 38 integration test trên PostgreSQL 16.15, cùng 94 test thường, bao gồm V1–V3 và restart giữ dữ liệu. Backup và chạy profile postgres-tests trước phát hành. Không xóa receipt để tiết kiệm dung lượng khi vẫn cần bảo đảm retry; xóa goal qua API sẽ dọn receipt tương ứng.
+
+## V2 — Điểm check-in và dữ liệu cũ
+
+Flyway tự áp dụng `V2__check_in_xp_accounting.sql` sau V1; không sửa V1 đã chạy. V2 tạo bảng `check_in_xp_adjustment` và thêm các cột nullable vào check-in, giữ nguyên bản ghi/số dư hiện có. Các check-in cũ chưa biết điểm gốc vẫn xem và sửa ghi chú được, nhưng đổi trạng thái trả 409 yêu cầu đối soát; không tự lấy điểm habit hiện tại để hoàn XP cũ. Check-in mới lưu điểm gốc và tác động XP thực tế.
+
+Backup trước nâng cấp; kiểm thử trên bản sao PostgreSQL trước deploy. Đã xác nhận V1–V3 trên PostgreSQL 16.15 ở đợt 11 ngày 24/09/2026; xem PHASE_1_BATCH_11_RESULTS.md. Không rollback về code cũ rồi tiếp tục ghi check-in: code cũ không biết cập nhật sổ điểm mới. Nếu phải rollback, dừng ghi check-in và đối soát các nguồn liên quan trước khi bật lại.
 
 ## Deploy lần đầu với Neon mới
 
 Bạn không cần chạy SQL thủ công. Tạo database **trống**, nhập `DATABASE_URL` (JDBC), `DATABASE_USERNAME`, `DATABASE_PASSWORD`, và chạy app với `SPRING_PROFILES_ACTIVE=prod` theo một trong hai hướng dẫn deploy.
 
-Khi khởi động, Flyway tạo 18 bảng ứng dụng, khóa ngoại và ràng buộc theo entity hiện tại; ghi lịch sử vào `flyway_schema_history`. Hibernate tiếp tục kiểm tra schema bằng `ddl-auto: validate`. Sau đó ứng dụng mới nhận request. Khi restart/redeploy, Flyway chỉ chạy các migration mới, không tạo lại bảng hoặc xóa dữ liệu.
+Khi khởi động, Flyway tạo 18 bảng ban đầu ở V1, bảng điều chỉnh XP ở V2, bảng receipt tiến độ ở V3 và các cột/ràng buộc mới; ghi lịch sử vào `flyway_schema_history`. Hibernate tiếp tục kiểm tra schema bằng `ddl-auto: validate`. Sau đó ứng dụng mới nhận request. Khi restart/redeploy, Flyway chỉ chạy các migration mới, không tạo lại bảng hoặc xóa dữ liệu.
 
 Danh mục và huy hiệu mặc định vẫn do các data loader hiện có tạo sau migration. Profile prod không tạo tài khoản demo.
 
@@ -41,3 +61,12 @@ Kết quả ngày 20/09/2026: `mvn -B -Ppostgres-tests clean verify` **BUILD SUC
 Không sửa V1 sau khi đã áp dụng lên database. Thêm `V2__ten_thay_doi.sql`, rồi V3,... vào cùng thư mục. Kiểm tra trên PostgreSQL và thử nâng cấp từ bản sao database trước khi release. Không xóa bảng lịch sử, không dùng Flyway repair để che lỗi checksum. Nếu migration/checksum thất bại, đối chiếu bản đã release và khôi phục file đúng trước.
 
 Flyway chỉ bật mặc định trong profile prod. H2 dev và các test cũ giữ cách chạy hiện tại để không tác động database local đã có. Không cần đổi biến môi trường deploy ngoài các biến đã nêu trong hai hướng dẫn.
+
+## V8 — habit_batch_receipt
+Lưu user_id, request_id UUID, fingerprint và tối đa 10 habit ID cho retry batch. Unique (user_id, request_id), user FK cascade. Không sửa V1–V7. Retry không bật lại habit đã tắt. Cần kiểm chứng PostgreSQL trước khi triển khai migration này.
+
+### Kiểm chứng V8 — 2026-10-07
+Batch 41: PostgreSQL 16.15, 56 integration tests đạt; validate V1–V8 và startup/restart giữ dữ liệu. Đây là database Testcontainers riêng, chưa chạy migration trên production.
+
+## V9 — long_journal_entries
+Mở rộng bốn cột nhật ký lên VARCHAR(5000). Không sửa migration cũ. Cần kiểm chứng trên PostgreSQL trước triển khai; rollback app không cần thu hẹp cột và không được tự cắt nhật ký dài đã lưu.

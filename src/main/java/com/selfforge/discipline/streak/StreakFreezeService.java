@@ -1,11 +1,12 @@
 package com.selfforge.discipline.streak;
 
 import com.selfforge.discipline.auth.AppUser;
-import com.selfforge.discipline.habit.Habit;
+import com.selfforge.discipline.auth.AppUserRepository;
+import com.selfforge.discipline.auth.PremiumController;
+import com.selfforge.discipline.common.UserTime;
 import com.selfforge.discipline.habit.HabitService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
@@ -13,45 +14,45 @@ import java.util.List;
 @Service
 @Transactional
 public class StreakFreezeService {
-
-    private static final int MAX_FREEZES_PER_MONTH = 2;
-
+    private final UserTime userTime;
     private final StreakFreezeRepository freezeRepository;
     private final HabitService habitService;
+    private final AppUserRepository users;
 
-    public StreakFreezeService(StreakFreezeRepository freezeRepository, HabitService habitService) {
+    public StreakFreezeService(StreakFreezeRepository freezeRepository, HabitService habitService,
+                               UserTime userTime, AppUserRepository users) {
         this.freezeRepository = freezeRepository;
         this.habitService = habitService;
+        this.userTime = userTime;
+        this.users = users;
     }
 
     public StreakFreezeResponse useFreeze(AppUser user, Long habitId, LocalDate date) {
-        LocalDate freezeDate = date == null ? LocalDate.now() : date;
-
-        // Validate: can only freeze today or yesterday
-        LocalDate today = LocalDate.now();
+        users.lockById(user.getId()).orElseThrow();
+        var now = userTime.now(user);
+        LocalDate today = now.toLocalDate();
+        LocalDate freezeDate = date == null ? today : date;
         if (freezeDate.isBefore(today.minusDays(1)) || freezeDate.isAfter(today)) {
             throw new IllegalArgumentException("Chỉ có thể freeze hôm nay hoặc hôm qua");
         }
-
-        // Check already frozen
-        if (freezeRepository.existsByUserIdAndHabitIdAndFreezeDate(user.getId(), habitId, freezeDate)) {
-            throw new IllegalArgumentException("Ngày này đã được freeze rồi");
+        // Check ownership before revealing whether this habit has already been frozen.
+        var habit = habitService.getHabit(user, habitId);
+        var existing = freezeRepository.findByUserIdAndHabitIdAndFreezeDate(user.getId(), habitId, freezeDate);
+        if (existing.isPresent()) return StreakFreezeResponse.from(existing.get());
+        int max = maxFreezes(user);
+        if (usedInMonth(user, YearMonth.from(today)) >= max) {
+            throw new IllegalStateException("Đã hết lượt bảo vệ streak tháng này (tối đa " + max + "/tháng)");
         }
+        return StreakFreezeResponse.from(freezeRepository.save(new StreakFreeze(user, habit, freezeDate, now.toInstant())));
+    }
 
-        // Check monthly quota
-        int used = usedThisMonth(user);
-        if (used >= MAX_FREEZES_PER_MONTH) {
-            throw new IllegalArgumentException("Đã hết lượt freeze tháng này (tối đa " + MAX_FREEZES_PER_MONTH + "/tháng)");
-        }
-
-        Habit habit = habitService.getHabit(user, habitId);
-        StreakFreeze freeze = freezeRepository.save(new StreakFreeze(user, habit, freezeDate));
-        return StreakFreezeResponse.from(freeze);
+    public int maxFreezes(AppUser user) {
+        return user.isPremium() ? PremiumController.PREMIUM_FREEZE_PER_MONTH : PremiumController.FREE_FREEZE_PER_MONTH;
     }
 
     @Transactional(readOnly = true)
     public int remainingFreezes(AppUser user) {
-        return MAX_FREEZES_PER_MONTH - usedThisMonth(user);
+        return Math.max(0, maxFreezes(user) - usedInMonth(user, YearMonth.from(userTime.today(user))));
     }
 
     @Transactional(readOnly = true)
@@ -61,15 +62,15 @@ public class StreakFreezeService {
 
     @Transactional(readOnly = true)
     public List<StreakFreezeResponse> history(AppUser user) {
-        YearMonth ym = YearMonth.now();
-        return freezeRepository.findByUserIdAndFreezeDateBetweenOrderByFreezeDateDesc(
-                        user.getId(), ym.atDay(1), ym.atEndOfMonth())
+        YearMonth ym = YearMonth.from(userTime.today(user));
+        return freezeRepository.findByUserIdAndFreezeDateBetweenOrderByFreezeDateDesc(user.getId(), ym.atDay(1), ym.atEndOfMonth())
                 .stream().map(StreakFreezeResponse::from).toList();
     }
 
-    private int usedThisMonth(AppUser user) {
-        YearMonth ym = YearMonth.now();
-        return freezeRepository.countByUserIdAndFreezeDateBetween(
-                user.getId(), ym.atDay(1), ym.atEndOfMonth());
+    private int usedInMonth(AppUser user, YearMonth month) {
+        // Charge the month the action was used, even when freezing yesterday in a previous month.
+        var start = userTime.day(user, month.atDay(1)).start();
+        var end = userTime.day(user, month.plusMonths(1).atDay(1)).start();
+        return freezeRepository.countByUserIdAndUsedAtGreaterThanEqualAndUsedAtLessThan(user.getId(), start, end);
     }
 }

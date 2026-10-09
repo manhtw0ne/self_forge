@@ -20,29 +20,37 @@ public class AuthService {
     private final AuthSessionRepository sessionRepository;
     private final PasswordHasher passwordHasher;
     private final TokenService tokenService;
+    private final RegistrationVerification registrationVerification;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
 
     public AuthService(
             AppUserRepository userRepository,
             AuthSessionRepository sessionRepository,
             PasswordHasher passwordHasher,
-            TokenService tokenService
+            TokenService tokenService,
+            RegistrationVerification registrationVerification
     ) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
         this.passwordHasher = passwordHasher;
         this.tokenService = tokenService;
+        this.registrationVerification = registrationVerification;
     }
 
+    @Transactional(noRollbackFor = PasswordResetService.InvalidCode.class)
     public AuthResponse register(RegisterRequest request) {
         String email = normalizeEmail(request.email());
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email is already registered");
         }
+        registrationVerification.verify(email, request.code());
         AppUser user = userRepository.save(new AppUser(
                 email,
                 request.displayName().trim(),
                 passwordHasher.hash(request.password())
         ));
+        if (registrationVerification.required()) user.markEmailVerified(Instant.now());
         return createSession(user);
     }
 
@@ -50,6 +58,8 @@ public class AuthService {
         String email = normalizeEmail(request.email());
         AppUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+        user = userRepository.lockById(user.getId()).orElseThrow();
+        entityManager.refresh(user);
         if (!passwordHasher.matches(request.password(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }

@@ -24,8 +24,14 @@ public class ProfileController {
     private final PasswordHasher passwordHasher;
 
     private final AuthSessionRepository sessions;
+    private final PasswordResetCodeRepository resetCodes;
+    private final AppUserRepository users;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
 
-    public ProfileController(CurrentUserService currentUserService, PasswordHasher passwordHasher, AuthSessionRepository sessions) {
+    public ProfileController(CurrentUserService currentUserService, PasswordHasher passwordHasher, AuthSessionRepository sessions, PasswordResetCodeRepository resetCodes, AppUserRepository users) {
+        this.users = users;
+        this.resetCodes = resetCodes;
         this.sessions = sessions;
         this.currentUserService = currentUserService;
         this.passwordHasher = passwordHasher;
@@ -38,7 +44,8 @@ public class ProfileController {
 
     @PatchMapping
     public UserResponse updateProfile(@Valid @RequestBody UpdateProfileRequest request, HttpServletRequest servletRequest) {
-        AppUser user = currentUserService.requireUser(servletRequest);
+        AppUser user = users.lockById(currentUserService.requireUser(servletRequest).getId()).orElseThrow();
+        entityManager.refresh(user);
         if (request.timezone() != null && !request.timezone().isBlank()) {
             try { ZoneId.of(request.timezone()); }
             catch (DateTimeException e) { throw new IllegalArgumentException("Invalid timezone"); }
@@ -49,12 +56,17 @@ public class ProfileController {
 
     @PatchMapping("/password")
     public void changePassword(@Valid @RequestBody ChangePasswordRequest request, HttpServletRequest servletRequest) {
-        AppUser user = currentUserService.requireUser(servletRequest);
+        AppUser user = users.lockById(currentUserService.requireUser(servletRequest).getId()).orElseThrow();
+        entityManager.refresh(user);
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("Mật khẩu xác nhận không khớp.");
+        }
         if (!passwordHasher.matches(request.oldPassword(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Old password is incorrect");
         }
         user.updatePasswordHash(passwordHasher.hash(request.newPassword()));
         sessions.deleteByUserId(user.getId());
+        resetCodes.findById(user.getId()).ifPresent(PasswordResetCode::consume);
     }
 
     public record UpdateProfileRequest(
@@ -67,7 +79,8 @@ public class ProfileController {
 
     public record ChangePasswordRequest(
             @NotBlank @Size(max = 128) String oldPassword,
-            @NotBlank @Size(min = 8, max = 128) String newPassword
+            @NotBlank @Size(min = 8, max = 128) String newPassword,
+            @NotBlank @Size(min = 8, max = 128) String confirmPassword
     ) {
     }
 }

@@ -9,9 +9,9 @@ public final class MoodRequests {
 
     public record SaveMoodRequest(
             LocalDate date,
-            int score,
-            String emoji,
-            String note
+            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(5) int score,
+            @jakarta.validation.constraints.Size(max = 255) String emoji,
+            @jakarta.validation.constraints.Size(max = 255) String note
     ) {
     }
 }

@@ -37,6 +37,11 @@ public class DailyCheckIn {
 
     private Instant createdAt;
 
+    // Nullable for legacy records: their original reward cannot safely be inferred.
+    private Integer pointsSnapshot;
+    private Integer failurePointsSnapshot;
+    private Integer appliedXp;
+
     protected DailyCheckIn() {
     }
 
@@ -77,11 +82,12 @@ public class DailyCheckIn {
     }
 
     public int scoreImpact() {
+        int points = pointsSnapshot != null ? pointsSnapshot : habit.getPoints();
         if (status == CheckInStatus.COMPLETED) {
-            return habit.getPoints();
+            return points;
         }
         if (status == CheckInStatus.FAILED) {
-            return -Math.max(1, habit.getPoints() / 2);
+            return -Math.max(1, points / 2);
         }
         return 0;
     }
@@ -90,4 +96,15 @@ public class DailyCheckIn {
         this.status = status;
         this.note = note;
     }
+
+    public void initializeAccounting(int points, int failurePoints) {
+        this.pointsSnapshot = points;
+        this.failurePointsSnapshot = failurePoints;
+        this.appliedXp = 0;
+    }
+
+    public Integer getPointsSnapshot() { return pointsSnapshot; }
+    public Integer getFailurePointsSnapshot() { return failurePointsSnapshot; }
+    public Integer getAppliedXp() { return appliedXp; }
+    public void setAppliedXp(int appliedXp) { this.appliedXp = appliedXp; }
 }

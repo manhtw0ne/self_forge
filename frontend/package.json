@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "oxlint",
+    "lint": "oxlint src vite.config.js",
+    "test": "node --test src/utils/dates.test.js src/utils/pendingProgress.test.js src/utils/language.test.js src/utils/pomodoroTimer.test.js src/utils/pomodoroStart.test.js src/utils/pendingChallenge.test.js src/utils/latestRequest.test.js src/utils/journalDraft.test.js src/utils/authSession.test.js src/utils/pendingHabitBatch.test.js src/utils/saveAndRefresh.test.js src/utils/journalLimits.test.js src/utils/goalForm.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

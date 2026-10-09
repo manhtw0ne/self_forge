@@ -14,10 +14,11 @@ public final class ChallengeRequests {
 
     public record CreateChallengeRequest(
             @NotNull Long habitId,
-            @NotBlank String name,
-            String description,
+            @NotBlank @jakarta.validation.constraints.Size(max = 255) String name,
+            @jakarta.validation.constraints.Size(max = 255) String description,
             LocalDate startDate,
-            @Min(1) @Max(365) Integer targetDays
+            @Min(1) @Max(365) Integer targetDays,
+            java.util.UUID requestId
     ) {
     }
 

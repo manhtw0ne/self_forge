@@ -19,6 +19,9 @@ public record HabitResponse(
         Instant createdAt
 ) {
     static HabitResponse from(Habit habit) {
+        var category = habit.getCategory();
+        boolean canReadCategory = category != null && (category.isSystemDefault()
+                || (habit.getUser() != null && category.getUser().getId().equals(habit.getUser().getId())));
         return new HabitResponse(
                 habit.getId(),
                 habit.getName(),
@@ -27,9 +30,9 @@ public record HabitResponse(
                 habit.getTargetPerWeek(),
                 habit.getPoints(),
                 habit.isActive(),
-                habit.getCategory() != null ? habit.getCategory().getId() : null,
-                habit.getCategory() != null ? habit.getCategory().getName() : null,
-                habit.getCategory() != null ? habit.getCategory().getColor() : null,
+                canReadCategory ? habit.getCategory().getId() : null,
+                canReadCategory ? habit.getCategory().getName() : null,
+                canReadCategory ? habit.getCategory().getColor() : null,
                 habit.getTags(),
                 habit.getSortOrder(),
                 habit.getStackGroup(),

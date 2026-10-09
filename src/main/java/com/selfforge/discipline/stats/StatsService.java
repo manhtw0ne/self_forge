@@ -1,6 +1,7 @@
 package com.selfforge.discipline.stats;
 
 import com.selfforge.discipline.auth.AppUser;
+import com.selfforge.discipline.common.UserTime;
 import com.selfforge.discipline.checkin.CheckInStatus;
 import com.selfforge.discipline.checkin.DailyCheckIn;
 import com.selfforge.discipline.checkin.DailyCheckInRepository;
@@ -26,16 +27,19 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class StatsService {
 
+    private final UserTime userTime;
+
     private final DailyCheckInRepository checkInRepository;
     private final HabitRepository habitRepository;
 
-    public StatsService(DailyCheckInRepository checkInRepository, HabitRepository habitRepository) {
+    public StatsService(DailyCheckInRepository checkInRepository, HabitRepository habitRepository, UserTime userTime) {
+        this.userTime = userTime;
         this.checkInRepository = checkInRepository;
         this.habitRepository = habitRepository;
     }
 
     public StatsResponse.WeeklyStatsResponse weeklyStats(AppUser user, LocalDate date) {
-        LocalDate selectedDate = date == null ? LocalDate.now() : date;
+        LocalDate selectedDate = date == null ? userTime.today(user) : date;
         LocalDate weekStart = selectedDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate weekEnd = weekStart.plusDays(6);
 
@@ -97,7 +101,7 @@ public class StatsService {
     }
 
     public StatsResponse.MonthlyStatsResponse monthlyStats(AppUser user, YearMonth month) {
-        YearMonth selectedMonth = month == null ? YearMonth.now() : month;
+        YearMonth selectedMonth = month == null ? YearMonth.from(userTime.today(user)) : month;
         LocalDate monthStart = selectedMonth.atDay(1);
         LocalDate monthEnd = selectedMonth.atEndOfMonth();
 
@@ -156,7 +160,7 @@ public class StatsService {
     }
 
     public StatsResponse.HeatmapDayResponse heatmap(AppUser user, Year year) {
-        Year selectedYear = year == null ? Year.now() : year;
+        Year selectedYear = year == null ? Year.from(userTime.today(user)) : year;
         LocalDate yearStart = selectedYear.atDay(1);
         LocalDate yearEnd = selectedYear.atMonth(12).atEndOfMonth();
 
@@ -168,7 +172,7 @@ public class StatsService {
 
         List<StatsResponse.HeatmapDay> days = new ArrayList<>();
         LocalDate cursor = yearStart;
-        LocalDate today = LocalDate.now();
+        LocalDate today = userTime.today(user);
         LocalDate limit = yearEnd.isAfter(today) ? today : yearEnd;
         while (!cursor.isAfter(limit)) {
             List<DailyCheckIn> dayCheckIns = byDate.getOrDefault(cursor, List.of());

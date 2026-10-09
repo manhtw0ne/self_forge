@@ -9,6 +9,7 @@ import java.util.Optional;
 
 public interface DailyCheckInRepository extends JpaRepository<DailyCheckIn, Long> {
 
+    List<DailyCheckIn> findByHabit_User_IdAndHabitIdAndDateBetween(Long userId, Long habitId, LocalDate start, LocalDate end);
     Optional<DailyCheckIn> findByHabitIdAndDate(Long habitId, LocalDate date);
 
     Optional<DailyCheckIn> findByHabit_User_IdAndHabitIdAndDate(Long userId, Long habitId, LocalDate date);

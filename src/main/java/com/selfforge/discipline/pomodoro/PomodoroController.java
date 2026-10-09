@@ -2,6 +2,10 @@ package com.selfforge.discipline.pomodoro;
 
 import com.selfforge.discipline.auth.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,20 +30,20 @@ public class PomodoroController {
         this.currentUserService = currentUserService;
     }
 
-    public record StartRequest(Long habitId, Integer durationMinutes) {}
-    public record CompleteRequest(String note) {}
+    public record StartRequest(Long habitId, @Min(25) @Max(120) Integer durationMinutes, java.util.UUID requestId) {}
+    public record CompleteRequest(@Size(max = 255) String note) {}
 
     @PostMapping("/start")
     @ResponseStatus(HttpStatus.CREATED)
-    public PomodoroResponse start(@RequestBody StartRequest request, HttpServletRequest servletRequest) {
+    public PomodoroResponse start(@Valid @RequestBody StartRequest request, HttpServletRequest servletRequest) {
         return pomodoroService.startSession(
-                currentUserService.requireUser(servletRequest), request.habitId(), request.durationMinutes());
+                currentUserService.requireUser(servletRequest), request.habitId(), request.durationMinutes(), request.requestId());
     }
 
     @PostMapping("/{id}/complete")
     public PomodoroResponse complete(
             @PathVariable Long id,
-            @RequestBody(required = false) CompleteRequest request,
+            @Valid @RequestBody(required = false) CompleteRequest request,
             HttpServletRequest servletRequest
     ) {
         return pomodoroService.completeSession(

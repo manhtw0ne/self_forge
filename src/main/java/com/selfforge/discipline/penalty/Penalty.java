@@ -43,6 +43,10 @@ public class Penalty {
 
     private Instant createdAt;
 
+    private Long checkInId;
+    @Column(nullable = false)
+    private boolean reversed;
+
     protected Penalty() {
     }
 
@@ -64,4 +68,7 @@ public class Penalty {
     public String getReason() { return reason; }
     public LocalDate getDate() { return date; }
     public Instant getCreatedAt() { return createdAt; }
+    public void linkCheckIn(Long id) { this.checkInId = id; }
+    public boolean isReversed() { return reversed; }
+    public void reverse() { this.reversed = true; }
 }

@@ -12,6 +12,7 @@ Yêu cầu JDK 21, Maven, Node 22.
 cd frontend
 npm ci
 npm run lint
+npm test
 npm run build
 cd ..
 Copy-Item frontend/dist/* src/main/resources/static/ -Recurse -Force
@@ -19,6 +20,24 @@ mvn -B verify
 ```
 
 Docker build tự build frontend và chạy test backend. Không dùng JAR có bundle frontend cũ. CI thực hiện cùng quy trình.
+
+## Cổng kiểm thử tự động trước deploy
+
+Cập nhật 24/09/2026: push main kích hoạt workflow Deploy, gọi lại .github/workflows/ci.yml qua workflow_call. Job deploy có needs: verify, nên khi Verify lỗi, bị hủy hoặc không hoàn tất thành công, deploy không chạy.
+
+Verify gồm npm ci, lint, 8 test frontend hiện có, build, đồng bộ static bundle và mvn -B -Ppostgres-tests verify (có PostgreSQL tạm). Báo cáo Surefire/Failsafe được lưu dưới artifact test-reports trong 7 ngày, kể cả khi test thất bại.
+
+Pull request và push nhánh khác vẫn chạy Verify độc lập. Push main không chạy thêm một Verify độc lập trùng lặp. Các job kiểm thử và deploy của cùng workflow checkout cùng commit của sự kiện push; không dùng workflow_run để lấy nhầm đầu nhánh mới hơn.
+
+Concurrency ở toàn workflow deploy giữ release đang chạy không bị hủy giữa chừng; GitHub có thể thay thế run còn chờ bằng push mới hơn. Timeout Verify 25 phút, deploy 20 phút. Secret FLY_API_TOKEN chỉ được đưa vào bước deploy, không truyền cho workflow kiểm thử.
+
+Kiểm tra sau khi push lần tới:
+1. Trong GitHub Actions, Verify release phải thành công trước Deploy SelfForge.
+2. Nếu test lỗi, Deploy SelfForge phải hiện skipped; tải test-reports để xem lỗi.
+3. Nếu Verify qua nhưng deploy lỗi thiếu token/quyền Fly, cấu hình GitHub Actions secret FLY_API_TOKEN với token phù hợp cho app. Không gửi token vào chat hoặc commit.
+4. Branch protection của main vẫn cần cấu hình ở GitHub nếu muốn bắt buộc PR qua kiểm thử trước merge. Job names trong required checks cần khớp run thực tế.
+
+Cấu hình đã qua actionlint local; chưa xác minh một run GitHub Actions từ thay đổi này và chưa deploy. Cổng tự động không thay thế checklist staging, backup và smoke test bên dưới.
 
 ## Database và secrets
 

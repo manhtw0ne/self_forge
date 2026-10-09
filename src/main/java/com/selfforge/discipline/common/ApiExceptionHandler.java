@@ -10,6 +10,23 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    org.springframework.http.ResponseEntity<ProblemDetail> handleStatus(
+            org.springframework.web.server.ResponseStatusException exception) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(exception.getStatusCode(),
+                exception.getReason() == null ? "Request could not be completed" : exception.getReason());
+        return org.springframework.http.ResponseEntity.status(exception.getStatusCode())
+                .headers(exception.getHeaders()).header("Cache-Control", "no-store").body(detail);
+    }
+
+    @ExceptionHandler(com.selfforge.discipline.auth.LoginAttemptLimiter.RateLimited.class)
+    org.springframework.http.ResponseEntity<ProblemDetail> handleLoginLimit(
+            com.selfforge.discipline.auth.LoginAttemptLimiter.RateLimited exception) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, exception.getReason());
+        return org.springframework.http.ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "60").header("Cache-Control", "no-store").body(detail);
+    }
+
     @ExceptionHandler(EntityNotFoundException.class)
     ProblemDetail handleNotFound(EntityNotFoundException exception) {
         ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);

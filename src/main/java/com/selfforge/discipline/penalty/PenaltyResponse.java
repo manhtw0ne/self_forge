@@ -11,7 +11,8 @@ public record PenaltyResponse(
         int xpDeducted,
         String reason,
         LocalDate date,
-        Instant createdAt
+        Instant createdAt,
+        boolean reversed
 ) {
     public static PenaltyResponse from(Penalty penalty) {
         return new PenaltyResponse(
@@ -22,7 +23,8 @@ public record PenaltyResponse(
                 penalty.getXpDeducted(),
                 penalty.getReason(),
                 penalty.getDate(),
-                penalty.getCreatedAt()
+                penalty.getCreatedAt(),
+                penalty.isReversed()
         );
     }
 }

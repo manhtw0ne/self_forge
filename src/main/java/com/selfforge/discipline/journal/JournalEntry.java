@@ -28,12 +28,16 @@ public class JournalEntry {
     @Column(nullable = false)
     private LocalDate date;
 
+    @Column(length = 5000)
     private String win;
 
+    @Column(length = 5000)
     private String obstacle;
 
+    @Column(length = 5000)
     private String lesson;
 
+    @Column(length = 5000)
     private String tomorrowFocus;
 
     private Instant createdAt;

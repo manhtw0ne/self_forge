@@ -1,64 +1,86 @@
-import { useEffect, useState } from 'react';
+import { createLatestRequest } from '../utils/latestRequest';
+import { useLanguage } from '../context/useLanguage';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useToast } from '../context/useToast';
 import PremiumGate from '../components/PremiumGate';
 import api from '../api/client';
 
 export default function RewardsPage() {
+  const { t } = useLanguage();
   const [progress, setProgress] = useState(null);
   const [achievements, setAchievements] = useState([]);
   const [penalties, setPenalties] = useState(null);
+  const [customError, setCustomError] = useState(false);
   const [customRewards, setCustomRewards] = useState([]);
   const [showRewardModal, setShowRewardModal] = useState(false);
   const [rewardForm, setRewardForm] = useState({ name: '', description: '', xpCost: 100 });
   const [loading, setLoading] = useState(true);
   const toast = useToast();
+  const inFlight = useRef(false);
+  const requests = useRef(createLatestRequest());
+  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  const loadAll = () => {
-    Promise.all([
+  const loadAll = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
+    setCustomError(false);
+    return requests.current.run(() => Promise.all([
       api.get('/rewards/progress'),
       api.get('/rewards/achievements'),
       api.get('/penalties/summary'),
-      api.get('/custom-rewards').catch(() => ({ data: [] })),
-    ])
-      .then(([p, a, pen, cr]) => { setProgress(p.data); setAchievements(a.data); setPenalties(pen.data); setCustomRewards(cr.data); })
-      .finally(() => setLoading(false));
-  };
+      api.get('/custom-rewards').catch(error => ({ data: [], failed: error.response?.status !== 403 })),
+    ]), ([p, a, pen, cr]) => { setProgress(p.data); setAchievements(a.data); setPenalties(pen.data); setCustomRewards(cr.data); setCustomError(Boolean(cr.failed)); },
+      () => setLoadError(true), () => setLoading(false));
+  }, []);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    loadAll();
+    const gate = requests.current;
+    return () => gate.invalidate();
+  }, [loadAll]);
 
   const handleCreateReward = async (e) => {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true);
     try {
       await api.post('/custom-rewards', { ...rewardForm, xpCost: parseInt(rewardForm.xpCost) });
-      toast.success('🎁 Đã tạo phần thưởng!');
+      toast.success(t("🎁 Đã tạo phần thưởng!"));
       setShowRewardModal(false);
       setRewardForm({ name: '', description: '', xpCost: 100 });
-      loadAll();
+      await loadAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Có lỗi xảy ra');
-    }
+      toast.error(t(err.response?.data?.detail || 'Có lỗi xảy ra'));
+    } finally { inFlight.current = false; setBusy(false); }
   };
 
   const handleClaimReward = async (id) => {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true);
     try {
       await api.post(`/custom-rewards/${id}/claim`);
-      toast.success('🎉 Đã nhận phần thưởng!');
-      loadAll();
+      toast.success(t("🎉 Đã nhận phần thưởng!"));
+      await loadAll();
     } catch (err) {
-      toast.error(err.response?.data?.message || err.response?.data?.detail || 'Không đủ XP');
-    }
+      toast.error(t(err.response?.data?.detail || err.response?.data?.message || 'Chưa xác nhận được việc nhận thưởng. Hãy tải lại danh sách trước khi thử lại.'));
+      await loadAll();
+    } finally { inFlight.current = false; setBusy(false); }
   };
 
   const handleDeleteReward = async (id) => {
+    if (inFlight.current || !window.confirm(t('Xóa phần thưởng này? XP đã dùng sẽ không được hoàn lại.'))) return;
+    inFlight.current = true; setBusy(true);
     try {
       await api.delete(`/custom-rewards/${id}`);
-      toast.info('Đã xóa phần thưởng');
-      loadAll();
+      toast.info(t("Đã xóa phần thưởng"));
+      await loadAll();
     } catch {
-      toast.error('Không thể xóa');
-    }
+      toast.error(t("Không thể xóa"));
+    } finally { inFlight.current = false; setBusy(false); }
   };
 
+  if (loadError) return <div className="empty-state" role="alert"><p>{t('Không thể tải dữ liệu.')}</p><button disabled={busy} className="btn btn-secondary" onClick={loadAll}>{t('Thử lại')}</button></div>;
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
   const levelPercent = progress ? (progress.levelProgress * 100) : 0;
@@ -67,8 +89,8 @@ export default function RewardsPage() {
   return (
     <div className="fade-in">
       <div className="page-header">
-        <h1>🏆 Thành tựu & Cấp độ</h1>
-        <p>Hệ thống gamification để tăng động lực</p>
+        <h1>{t("🏆 Thành tựu & Cấp độ")}</h1>
+        <p>{t("Hệ thống gamification để tăng động lực")}</p>
       </div>
 
       {/* Level Card */}
@@ -79,14 +101,14 @@ export default function RewardsPage() {
           </span>
           <h2 style={{ fontSize: '2rem', marginBottom: '0.25rem', position: 'relative', zIndex: 1 }}>Level {progress.level}</h2>
           <p style={{ opacity: 0.85, fontSize: '0.85rem', marginBottom: '1rem', position: 'relative', zIndex: 1 }}>
-            {progress.totalXp} XP tổng cộng
+            {t('{count} XP tổng cộng', { count: progress.totalXp })}
           </p>
           <div style={{ maxWidth: '400px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
             <div className="progress-bar" style={{ height: '12px', background: 'rgba(255,255,255,0.15)' }}>
               <div className="progress-fill" style={{ width: `${levelPercent}%`, background: 'rgba(255,255,255,0.9)' }} />
             </div>
             <p style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.4rem' }}>
-              {progress.currentLevelXp} / {progress.nextLevelXp} XP đến level {progress.level + 1}
+              {t('{current} / {next} XP đến level {level}', { current: progress.currentLevelXp, next: progress.nextLevelXp, level: progress.level + 1 })}
             </p>
           </div>
         </div>
@@ -98,9 +120,9 @@ export default function RewardsPage() {
           <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
             <span style={{ fontSize: '2rem' }}>⚠️</span>
             <div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Lịch sử phạt</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{t("Lịch sử phạt")}</div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                {penalties.totalPenalties} lần phạt · {penalties.totalXpDeducted} XP đã bị trừ
+                {t('{count} lần phạt · {xp} XP đã bị trừ', { count: penalties.totalPenalties, xp: penalties.totalXpDeducted })}
               </div>
             </div>
           </div>
@@ -108,17 +130,17 @@ export default function RewardsPage() {
       )}
 
       {/* Custom Rewards — Premium only */}
-      <PremiumGate mode="section" feature="Phần thưởng tùy chỉnh">
+      <PremiumGate mode="section" feature={t("Phần thưởng tùy chỉnh")}>
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <div className="card-header">
-          <span className="card-title">🎁 Phần thưởng của tôi</span>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowRewardModal(true)}>+ Tạo mới</button>
+          <span className="card-title">{t("🎁 Phần thưởng của tôi")}</span>
+          <button disabled={busy} className="btn btn-primary btn-sm" onClick={() => setShowRewardModal(true)}>{t("+ Tạo mới")}</button>
         </div>
-        {customRewards.length === 0 ? (
+        {customError ? <div role="status"><p>{t('Không thể tải phần thưởng tùy chỉnh.')}</p><button className="btn btn-secondary" disabled={busy} onClick={loadAll}>{t('Thử lại')}</button></div> : customRewards.length === 0 ? (
           <div className="empty-state" style={{ padding: '1.5rem' }}>
             <div className="empty-icon">🎁</div>
-            <p>Tự đặt phần thưởng để thưởng cho bản thân khi đạt đủ XP!</p>
-            <button className="btn btn-secondary" onClick={() => setShowRewardModal(true)}>Tạo phần thưởng đầu tiên</button>
+            <p>{t("Tự đặt phần thưởng để thưởng cho bản thân khi đạt đủ XP!")}</p>
+            <button disabled={busy} className="btn btn-secondary" onClick={() => setShowRewardModal(true)}>{t("Tạo phần thưởng đầu tiên")}</button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -133,16 +155,16 @@ export default function RewardsPage() {
                 </div>
                 <div className="habit-actions">
                   {r.claimed ? (
-                    <span className="badge badge-success">✓ Đã nhận</span>
+                    <span className="badge badge-success">{t("✓ Đã nhận")}</span>
                   ) : (
                     <>
                       <button className="btn btn-primary btn-sm"
                         onClick={() => handleClaimReward(r.id)}
-                        disabled={!progress || progress.totalXp < r.xpCost}
-                        title={progress && progress.totalXp < r.xpCost ? `Cần ${r.xpCost - progress.totalXp} XP nữa` : 'Nhận thưởng'}>
-                        🎉 Nhận
+                        disabled={busy || !progress || progress.totalXp < r.xpCost}
+                        title={progress && progress.totalXp < r.xpCost ? t('Cần {count} XP nữa', { count: r.xpCost - progress.totalXp }) : t('Nhận thưởng')}>
+                        {t('🎉 Nhận')}
                       </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDeleteReward(r.id)} title="Xóa">✗</button>
+                      <button disabled={busy} className="btn btn-danger btn-sm" onClick={() => handleDeleteReward(r.id)} title={t("Xóa")}>✗</button>
                     </>
                   )}
                 </div>
@@ -156,19 +178,19 @@ export default function RewardsPage() {
       {/* Achievements */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Huy hiệu ({earnedCount}/{achievements.length})</span>
+          <span className="card-title">{t('Huy hiệu ({earned}/{total})', { earned: earnedCount, total: achievements.length })}</span>
           {earnedCount > 0 && (
-            <span className="badge badge-success">{Math.round(earnedCount / achievements.length * 100)}% đã đạt</span>
+            <span className="badge badge-success">{t('{percent}% đã đạt', { percent: Math.round(earnedCount / achievements.length * 100) })}</span>
           )}
         </div>
         <div className="card-grid card-grid-4">
           {achievements.map((a, i) => (
             <div key={a.id} className={`achievement-card ${a.earned ? 'earned' : 'locked'} slide-in`} style={{ animationDelay: `${i * 0.05}s` }}>
               <div className="achievement-icon">{a.iconEmoji}</div>
-              <div className="achievement-name">{a.name}</div>
-              <div className="achievement-desc">{a.description}</div>
+              <div className="achievement-name">{t(a.name)}</div>
+              <div className="achievement-desc">{t(a.description)}</div>
               <span className={`badge ${a.earned ? 'badge-success' : 'badge-info'}`}>
-                {a.earned ? '✓ Đã đạt' : `${a.xpReward} XP`}
+                {a.earned ? t('✓ Đã đạt') : `${a.xpReward} XP`}
               </span>
             </div>
           ))}
@@ -177,30 +199,30 @@ export default function RewardsPage() {
 
       {/* Create Reward Modal */}
       {showRewardModal && (
-        <div className="modal-overlay" onClick={() => setShowRewardModal(false)}>
+        <div className="modal-overlay" onClick={() => { if (!inFlight.current) setShowRewardModal(false); }}>
           <div className="modal scale-in" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">🎁 Tạo phần thưởng</h2>
-            <form onSubmit={handleCreateReward}>
+            <h2 className="modal-title">{t("🎁 Tạo phần thưởng")}</h2>
+            <form onSubmit={handleCreateReward} aria-busy={busy}><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div className="form-group">
-                <label className="form-label">Tên phần thưởng *</label>
-                <input className="form-input" value={rewardForm.name} onChange={e => setRewardForm({ ...rewardForm, name: e.target.value })} required placeholder="VD: Xem phim cuối tuần" />
+                <label className="form-label">{t("Tên phần thưởng *")}</label>
+                <input className="form-input" maxLength={255} value={rewardForm.name} onChange={e => setRewardForm({ ...rewardForm, name: e.target.value })} required placeholder={t("VD: Xem phim cuối tuần")} />
               </div>
               <div className="form-group">
-                <label className="form-label">Mô tả</label>
-                <input className="form-input" value={rewardForm.description} onChange={e => setRewardForm({ ...rewardForm, description: e.target.value })} placeholder="Chi tiết phần thưởng" />
+                <label className="form-label">{t("Mô tả")}</label>
+                <input className="form-input" maxLength={255} value={rewardForm.description} onChange={e => setRewardForm({ ...rewardForm, description: e.target.value })} placeholder={t("Chi tiết phần thưởng")} />
               </div>
               <div className="form-group">
-                <label className="form-label">Chi phí XP *</label>
-                <input type="number" className="form-input" min="10" value={rewardForm.xpCost} onChange={e => setRewardForm({ ...rewardForm, xpCost: e.target.value })} required />
+                <label className="form-label">{t("Chi phí XP *")}</label>
+                <input type="number" className="form-input" min="1" max="1000000" value={rewardForm.xpCost} onChange={e => setRewardForm({ ...rewardForm, xpCost: e.target.value })} required />
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  XP hiện tại: {progress?.totalXp || 0}
+                  {t('XP hiện tại: {count}', { count: progress?.totalXp || 0 })}
                 </div>
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowRewardModal(false)}>Hủy</button>
-                <button type="submit" className="btn btn-primary">Tạo</button>
+                <button type="button" className="btn btn-secondary" onClick={() => { if (!inFlight.current) setShowRewardModal(false); }}>{t("Hủy")}</button>
+                <button type="submit" className="btn btn-primary">{t("Tạo")}</button>
               </div>
-            </form>
+            </fieldset></form>
           </div>
         </div>
       )}

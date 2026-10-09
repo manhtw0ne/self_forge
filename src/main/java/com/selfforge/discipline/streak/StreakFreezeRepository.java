@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface StreakFreezeRepository extends JpaRepository<StreakFreeze, Long> {
+    List<StreakFreeze> findByUserIdAndHabitIdAndFreezeDateBetween(Long userId, Long habitId, LocalDate start, LocalDate end);
+    int countByUserIdAndUsedAtGreaterThanEqualAndUsedAtLessThan(Long userId, java.time.Instant start, java.time.Instant end);
+
 
     int countByUserIdAndFreezeDateBetween(Long userId, LocalDate start, LocalDate end);
 

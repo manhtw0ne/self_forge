@@ -19,10 +19,12 @@ public class AuthController {
 
     private final AuthService authService;
     private final CurrentUserService currentUserService;
+    private final LoginAttemptLimiter loginAttemptLimiter;
 
-    public AuthController(AuthService authService, CurrentUserService currentUserService) {
+    public AuthController(AuthService authService, CurrentUserService currentUserService, LoginAttemptLimiter loginAttemptLimiter) {
         this.authService = authService;
         this.currentUserService = currentUserService;
+        this.loginAttemptLimiter = loginAttemptLimiter;
     }
 
     @PostMapping("/register")
@@ -33,6 +35,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+        loginAttemptLimiter.acquire(request.email());
         return authService.login(request);
     }
 

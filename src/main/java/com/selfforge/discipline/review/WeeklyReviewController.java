@@ -1,6 +1,7 @@
 package com.selfforge.discipline.review;
 
 import com.selfforge.discipline.auth.AppUser;
+import com.selfforge.discipline.common.UserTime;
 import com.selfforge.discipline.auth.CurrentUserService;
 import com.selfforge.discipline.common.RequirePremium;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,10 +19,13 @@ import java.util.List;
 @RequestMapping("/api/weekly-review")
 public class WeeklyReviewController {
 
+    private final UserTime userTime;
+
     private final WeeklyReviewRepository reviewRepository;
     private final CurrentUserService currentUserService;
 
-    public WeeklyReviewController(WeeklyReviewRepository reviewRepository, CurrentUserService currentUserService) {
+    public WeeklyReviewController(WeeklyReviewRepository reviewRepository, CurrentUserService currentUserService, UserTime userTime) {
+        this.userTime = userTime;
         this.reviewRepository = reviewRepository;
         this.currentUserService = currentUserService;
     }
@@ -36,7 +40,7 @@ public class WeeklyReviewController {
     @GetMapping("/current")
     public ReviewResponse current(HttpServletRequest request) {
         AppUser user = currentUserService.requireUser(request);
-        LocalDate weekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate weekStart = userTime.today(user).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         return reviewRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
                 .map(ReviewResponse::from)
                 .orElse(null);
@@ -46,7 +50,7 @@ public class WeeklyReviewController {
     @ResponseStatus(HttpStatus.CREATED)
     public ReviewResponse save(@RequestBody ReviewRequest req, HttpServletRequest request) {
         AppUser user = currentUserService.requireUser(request);
-        LocalDate weekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate weekStart = userTime.today(user).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         WeeklyReview review = reviewRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
                 .map(existing -> {
                     existing.update(req.wins(), req.improvements(), req.nextWeekPlan(), req.rating());

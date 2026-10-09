@@ -24,6 +24,11 @@ public class PomodoroSession {
     @ManyToOne(fetch = FetchType.LAZY)
     private Habit habit;
 
+    @jakarta.persistence.Column(length = 36)
+    private String startRequestId;
+
+    public void setStartRequestId(String value) { this.startRequestId = value; }
+
     private int durationMinutes;
 
     private boolean completed;
@@ -38,16 +43,20 @@ public class PomodoroSession {
     }
 
     public PomodoroSession(AppUser user, Habit habit, int durationMinutes) {
+        this(user, habit, durationMinutes, Instant.now());
+    }
+
+    public PomodoroSession(AppUser user, Habit habit, int durationMinutes, Instant startedAt) {
         this.user = user;
         this.habit = habit;
         this.durationMinutes = durationMinutes;
         this.completed = false;
-        this.startedAt = Instant.now();
+        this.startedAt = startedAt;
     }
 
-    public void complete(String note) {
+    public void complete(String note, Instant endedAt) {
         this.completed = true;
-        this.endedAt = Instant.now();
+        this.endedAt = endedAt;
         this.note = note;
     }
 

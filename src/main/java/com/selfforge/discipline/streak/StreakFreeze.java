@@ -38,10 +38,14 @@ public class StreakFreeze {
     }
 
     public StreakFreeze(AppUser user, Habit habit, LocalDate freezeDate) {
+        this(user, habit, freezeDate, Instant.now());
+    }
+
+    public StreakFreeze(AppUser user, Habit habit, LocalDate freezeDate, Instant usedAt) {
         this.user = user;
         this.habit = habit;
         this.freezeDate = freezeDate;
-        this.usedAt = Instant.now();
+        this.usedAt = usedAt;
     }
 
     public Long getId() { return id; }

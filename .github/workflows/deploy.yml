@@ -1,14 +1,26 @@
-name: Deploy to Fly.io
+name: Manual legacy Fly.io deployment
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep an in-progress release intact; only the pending run may be superseded.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
+  verify:
+    name: Verify release
+    uses: ./.github/workflows/ci.yml
+
   deploy:
     name: Deploy SelfForge
+    needs: verify
     runs-on: ubuntu-latest
-    concurrency: deploy-group
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

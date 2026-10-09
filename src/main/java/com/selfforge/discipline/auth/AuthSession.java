@@ -37,6 +37,10 @@ public class AuthSession {
         this.createdAt = Instant.now();
     }
 
+    public Long getId() { return id; }
+
+    public Instant getCreatedAt() { return createdAt; }
+
     public AppUser getUser() {
         return user;
     }

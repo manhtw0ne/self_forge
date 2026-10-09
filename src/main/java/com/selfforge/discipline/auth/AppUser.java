@@ -14,6 +14,10 @@ import java.time.Instant;
 @Entity
 @Table(name = "app_user")
 public class AppUser {
+    private java.time.Instant emailVerifiedAt;
+    public void markEmailVerified(java.time.Instant instant) { this.emailVerifiedAt = instant; }
+    public java.time.Instant getEmailVerifiedAt() { return emailVerifiedAt; }
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

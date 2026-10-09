@@ -1,6 +1,7 @@
 package com.selfforge.discipline.dashboard;
 
 import com.selfforge.discipline.auth.AppUser;
+import com.selfforge.discipline.common.UserTime;
 import com.selfforge.discipline.checkin.CheckInResponse;
 import com.selfforge.discipline.checkin.CheckInService;
 import com.selfforge.discipline.checkin.DailyCheckIn;
@@ -21,16 +22,19 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class DashboardService {
 
+    private final UserTime userTime;
+
     private final HabitRepository habitRepository;
     private final CheckInService checkInService;
 
-    public DashboardService(HabitRepository habitRepository, CheckInService checkInService) {
+    public DashboardService(HabitRepository habitRepository, CheckInService checkInService, UserTime userTime) {
+        this.userTime = userTime;
         this.habitRepository = habitRepository;
         this.checkInService = checkInService;
     }
 
     public DashboardResponse today(AppUser user, LocalDate date) {
-        LocalDate selectedDate = date == null ? LocalDate.now() : date;
+        LocalDate selectedDate = date == null ? userTime.today(user) : date;
         LocalDate weekStart = selectedDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         List<Habit> habits = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId());
         Map<Long, CheckInResponse> todayCheckIns = checkInService.listByDate(user, selectedDate).stream()

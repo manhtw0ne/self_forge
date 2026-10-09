@@ -1,6 +1,7 @@
 package com.selfforge.discipline.journal;
 
 import com.selfforge.discipline.auth.AppUser;
+import com.selfforge.discipline.common.UserTime;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,14 +14,20 @@ import static com.selfforge.discipline.journal.JournalRequests.SaveJournalReques
 @Transactional
 public class JournalService {
 
+    private final UserTime userTime;
+    private final com.selfforge.discipline.auth.AppUserRepository users;
+
     private final JournalRepository journalRepository;
 
-    public JournalService(JournalRepository journalRepository) {
+    public JournalService(JournalRepository journalRepository, UserTime userTime, com.selfforge.discipline.auth.AppUserRepository users) {
+        this.userTime = userTime;
+        this.users = users;
         this.journalRepository = journalRepository;
     }
 
     public JournalResponse save(AppUser user, SaveJournalRequest request) {
-        LocalDate date = request.date() == null ? LocalDate.now() : request.date();
+        users.lockById(user.getId()).orElseThrow();
+        LocalDate date = request.date() == null ? userTime.today(user) : request.date();
         JournalEntry entry = journalRepository.findByUserIdAndDate(user.getId(), date)
                 .map(existing -> {
                     existing.update(request.win(), request.obstacle(), request.lesson(), request.tomorrowFocus());
@@ -39,7 +46,7 @@ public class JournalService {
 
     @Transactional(readOnly = true)
     public JournalResponse get(AppUser user, LocalDate date) {
-        LocalDate selectedDate = date == null ? LocalDate.now() : date;
+        LocalDate selectedDate = date == null ? userTime.today(user) : date;
         return journalRepository.findByUserIdAndDate(user.getId(), selectedDate)
                 .map(JournalResponse::from)
                 .orElseThrow(() -> new EntityNotFoundException("Journal entry for " + selectedDate + " does not exist"));

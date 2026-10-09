@@ -1,8 +1,10 @@
 package com.selfforge.discipline.reward;
 
 import com.selfforge.discipline.auth.AppUser;
+import com.selfforge.discipline.common.UserTime;
+import com.selfforge.discipline.auth.AppUserRepository;
 import com.selfforge.discipline.checkin.CheckInStatus;
-import com.selfforge.discipline.checkin.DailyCheckIn;
+import com.selfforge.discipline.streak.StreakService;
 import com.selfforge.discipline.checkin.DailyCheckInRepository;
 import com.selfforge.discipline.habit.Habit;
 import com.selfforge.discipline.habit.HabitRepository;
@@ -22,24 +24,32 @@ import java.util.stream.Collectors;
 @Transactional
 public class RewardService {
 
+    private final UserTime userTime;
+    private final StreakService streakService;
+
     private final UserLevelRepository userLevelRepository;
     private final AchievementRepository achievementRepository;
     private final UserAchievementRepository userAchievementRepository;
     private final DailyCheckInRepository checkInRepository;
     private final HabitRepository habitRepository;
+    private final AppUserRepository users;
 
     public RewardService(
             UserLevelRepository userLevelRepository,
             AchievementRepository achievementRepository,
             UserAchievementRepository userAchievementRepository,
             DailyCheckInRepository checkInRepository,
-            HabitRepository habitRepository
-    ) {
+            HabitRepository habitRepository,
+            AppUserRepository users
+    , UserTime userTime, StreakService streakService) {
+        this.streakService = streakService;
+        this.userTime = userTime;
         this.userLevelRepository = userLevelRepository;
         this.achievementRepository = achievementRepository;
         this.userAchievementRepository = userAchievementRepository;
         this.checkInRepository = checkInRepository;
         this.habitRepository = habitRepository;
+        this.users = users;
     }
 
     public void addXp(AppUser user, int amount) {
@@ -52,13 +62,31 @@ public class RewardService {
         level.deductXp(amount);
     }
 
+    /** Undo a source's actual effect, then apply the new effect. Caller holds the user lock. */
+    public int replaceCheckInXp(AppUser user, int previousEffect, int desiredEffect) {
+        UserLevel level = getOrCreateLevel(user);
+        if (previousEffect > 0 && level.getTotalXp() < previousEffect) {
+            throw new IllegalStateException("Không đủ XP để thu hồi điểm check-in đã sử dụng. Không thay đổi check-in.");
+        }
+        if (previousEffect > 0) level.deductXp(previousEffect);
+        if (previousEffect < 0) level.addXp(-previousEffect);
+        if (desiredEffect >= 0) {
+            level.addXp(desiredEffect);
+            return desiredEffect;
+        }
+        int actualDeduction = Math.min(level.getTotalXp(), -desiredEffect);
+        level.deductXp(actualDeduction);
+        return -actualDeduction;
+    }
+
     public void checkAndGrantAchievements(AppUser user) {
-        LocalDate today = LocalDate.now();
+        users.lockById(user.getId()).orElseThrow();
+        LocalDate today = userTime.today(user);
 
         // Check streak-based achievements for each habit
         List<Habit> habits = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId());
         for (Habit habit : habits) {
-            int streak = computeStreak(user, habit.getId(), today);
+            int streak = streakService.current(user.getId(), habit.getId(), today);
             if (streak >= 7) {
                 grantIfNew(user, "STREAK_7");
             }
@@ -163,6 +191,8 @@ public class RewardService {
     }
 
     private UserLevel getOrCreateLevel(AppUser user) {
+        // Shared with check-in, Pomodoro and reward claims; also protects first-time creation.
+        users.lockById(user.getId()).orElseThrow();
         return userLevelRepository.findByUserId(user.getId())
                 .orElseGet(() -> userLevelRepository.save(new UserLevel(user)));
     }
@@ -177,23 +207,5 @@ public class RewardService {
         });
     }
 
-    private int computeStreak(AppUser user, Long habitId, LocalDate today) {
-        List<LocalDate> completedDates = checkInRepository
-                .findByHabit_User_IdAndHabitIdAndStatusAndDateIn(
-                        user.getId(), habitId, CheckInStatus.COMPLETED,
-                        today.minusDays(100).datesUntil(today.plusDays(1)).toList()
-                )
-                .stream()
-                .map(DailyCheckIn::getDate)
-                .toList();
 
-        Set<LocalDate> dateSet = new java.util.HashSet<>(completedDates);
-        LocalDate cursor = dateSet.contains(today) ? today : today.minusDays(1);
-        int streak = 0;
-        while (dateSet.contains(cursor)) {
-            streak++;
-            cursor = cursor.minusDays(1);
-        }
-        return streak;
-    }
 }

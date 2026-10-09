@@ -7,6 +7,8 @@ import java.util.Optional;
 
 public interface GoalRepository extends JpaRepository<Goal, Long> {
 
+    long countByUserIdAndStatus(Long userId, GoalStatus status);
+
     List<Goal> findByUserIdOrderByCreatedAtDesc(Long userId);
 
     List<Goal> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, GoalStatus status);

@@ -12,4 +12,9 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
     List<Reminder> findByUserIdAndEnabledTrueOrderByReminderTimeAsc(Long userId);
 
     Optional<Reminder> findByIdAndUserId(Long id, Long userId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select r from Reminder r where r.id = :id and r.user.id = :userId")
+    Optional<Reminder> lockByIdAndUserId(@org.springframework.data.repository.query.Param("id") Long id,
+            @org.springframework.data.repository.query.Param("userId") Long userId);
 }

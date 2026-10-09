@@ -12,15 +12,17 @@ public final class ReminderRequests {
     public record CreateReminderRequest(
             @NotNull Long habitId,
             @NotNull LocalTime reminderTime,
-            String daysOfWeek,
-            String message
+            @jakarta.validation.constraints.Size(max = 27)
+            @jakarta.validation.constraints.Pattern(regexp = "(MON|TUE|WED|THU|FRI|SAT|SUN)(,(MON|TUE|WED|THU|FRI|SAT|SUN))*") String daysOfWeek,
+            @jakarta.validation.constraints.Size(max = 255) String message
     ) {
     }
 
     public record UpdateReminderRequest(
             LocalTime reminderTime,
-            String daysOfWeek,
-            String message,
+            @jakarta.validation.constraints.Size(max = 27)
+            @jakarta.validation.constraints.Pattern(regexp = "(MON|TUE|WED|THU|FRI|SAT|SUN)(,(MON|TUE|WED|THU|FRI|SAT|SUN))*") String daysOfWeek,
+            @jakarta.validation.constraints.Size(max = 255) String message,
             Boolean enabled
     ) {
     }

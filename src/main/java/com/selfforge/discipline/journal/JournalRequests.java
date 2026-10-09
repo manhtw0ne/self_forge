@@ -9,10 +9,10 @@ public final class JournalRequests {
 
     public record SaveJournalRequest(
             LocalDate date,
-            String win,
-            String obstacle,
-            String lesson,
-            String tomorrowFocus
+            @jakarta.validation.constraints.Size(max = 5000) String win,
+            @jakarta.validation.constraints.Size(max = 5000) String obstacle,
+            @jakarta.validation.constraints.Size(max = 5000) String lesson,
+            @jakarta.validation.constraints.Size(max = 5000) String tomorrowFocus
     ) {
     }
 }

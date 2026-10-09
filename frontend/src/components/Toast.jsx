@@ -1,4 +1,5 @@
 import { useToast } from '../context/useToast';
+import { useLanguage } from '../context/useLanguage';
 
 const icons = {
   success: '✓',
@@ -9,16 +10,18 @@ const icons = {
 
 export default function Toast() {
   const { toasts, removeToast } = useToast();
+  const { t: translate } = useLanguage();
 
   if (toasts.length === 0) return null;
 
   return (
     <div className="toast-container">
       {toasts.map(t => (
-        <div key={t.id} className={`toast toast-${t.type} toast-enter`}>
-          <span className="toast-icon">{icons[t.type]}</span>
+        <div key={t.id} className={`toast toast-${t.type} toast-enter`}
+          role={t.type === 'error' ? 'alert' : 'status'} aria-atomic="true">
+          <span className="toast-icon" aria-hidden="true">{icons[t.type]}</span>
           <span className="toast-message">{t.message}</span>
-          <button className="toast-close" onClick={() => removeToast(t.id)}>×</button>
+          <button type="button" className="toast-close" aria-label={translate('Đóng thông báo')} onClick={() => removeToast(t.id)}>×</button>
         </div>
       ))}
     </div>

@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface PenaltyRepository extends JpaRepository<Penalty, Long> {
+    List<Penalty> findByCheckInIdAndReversedFalse(Long checkInId);
 
     List<Penalty> findByUserIdOrderByDateDesc(Long userId);
 

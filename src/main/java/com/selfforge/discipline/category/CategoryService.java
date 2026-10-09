@@ -15,8 +15,11 @@ import static com.selfforge.discipline.category.CategoryRequests.UpdateCategoryR
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final com.selfforge.discipline.auth.AppUserRepository users;
+    private final com.selfforge.discipline.habit.HabitRepository habits;
 
-    public CategoryService(CategoryRepository categoryRepository) {
+    public CategoryService(CategoryRepository categoryRepository, com.selfforge.discipline.auth.AppUserRepository users, com.selfforge.discipline.habit.HabitRepository habits) {
+        this.users = users; this.habits = habits;
         this.categoryRepository = categoryRepository;
     }
 
@@ -39,22 +42,25 @@ public class CategoryService {
 
     public CategoryResponse update(AppUser user, Long id, UpdateCategoryRequest request) {
         Category category = getCategory(user, id);
+        if (category.isSystemDefault()) throw new IllegalArgumentException("Cannot edit a system default category");
         category.update(request.name(), request.color(), request.icon());
         return CategoryResponse.from(category);
     }
 
     public void delete(AppUser user, Long id) {
+        users.lockById(user.getId()).orElseThrow();
         Category category = getCategory(user, id);
         if (category.isSystemDefault()) {
             throw new IllegalArgumentException("Cannot delete a system default category");
         }
+        if (habits.existsByCategoryId(id)) throw new IllegalStateException("Category is used by habits; remove those assignments before deleting it");
         categoryRepository.delete(category);
     }
 
     @Transactional(readOnly = true)
-    public Category getById(Long id) {
+    public Category getById(AppUser user, Long id) {
         if (id == null) return null;
-        return categoryRepository.findById(id).orElse(null);
+        return getCategory(user, id);
     }
 
     private Category getCategory(AppUser user, Long id) {

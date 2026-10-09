@@ -7,7 +7,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/ ./
-RUN npm run build
+RUN npm run lint && npm test && npm run build
 
 # ============================================
 # Stage 2: Build Backend
@@ -43,6 +43,8 @@ COPY --from=backend-build /app/target/*.jar app.jar
 
 RUN chown -R selfforge:selfforge /app
 USER selfforge
+
+ENV SPRING_PROFILES_ACTIVE=prod
 
 EXPOSE 8080
 

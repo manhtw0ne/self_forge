@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useAuth } from '../context/useAuth';
+import { readHabitBatch, saveHabitBatch, clearHabitBatch } from '../utils/pendingHabitBatch';
+import { localizedCategory } from '../utils/language';
+import { useLanguage } from '../context/useLanguage';
+import { useEffect, useState, useRef } from 'react';
 import { useToast } from '../context/useToast';
 import api from '../api/client';
 
@@ -55,7 +59,17 @@ const HABIT_TEMPLATES = [
 ];
 
 export default function HabitsPage() {
+  const { user } = useAuth();
+  return <HabitsContent key={user.id} userId={user.id} isPremium={user.isPremium} />;
+}
+function HabitsContent({ userId, isPremium }) {
+  const { t, language } = useLanguage();
+  const [pending, setPending] = useState(() => {
+    try { return readHabitBatch(sessionStorage, userId); } catch { return { invalid: true }; }
+  });
   const [habits, setHabits] = useState([]);
+  const [inactive, setInactive] = useState([]);
+  const [view, setView] = useState('active');
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -65,14 +79,25 @@ export default function HabitsPage() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', difficulty: 'MEDIUM', targetPerWeek: 7, categoryId: '', tags: '' });
   const toast = useToast();
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const loadVersion = useRef(0);
 
-  const load = () => {
-    Promise.all([api.get('/habits'), api.get('/categories')])
-      .then(([h, c]) => { setHabits(h.data); setCategories(c.data); })
-      .finally(() => setLoading(false));
+  const load = async () => {
+    const version = ++loadVersion.current;
+    setLoadError(false);
+    try {
+      const [h, c, archived] = await Promise.all([api.get('/habits'), api.get('/categories'), api.get('/habits/inactive')]);
+      if (version === loadVersion.current) { setHabits(h.data); setCategories(c.data); setInactive(archived.data); }
+    } catch {
+      if (version === loadVersion.current) setLoadError(true);
+    } finally {
+      if (version === loadVersion.current) setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { const version = loadVersion; load(); return () => { version.current++; }; }, []);
 
   const resetForm = () => setForm({ name: '', description: '', difficulty: 'MEDIUM', targetPerWeek: 7, categoryId: '', tags: '' });
 
@@ -97,94 +122,165 @@ export default function HabitsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (mutation.current) return;
+    mutation.current = true; setBusy(true);
     try {
       const payload = {
         ...form,
         targetPerWeek: parseInt(form.targetPerWeek),
         categoryId: form.categoryId ? parseInt(form.categoryId) : null,
+        ...(editHabit ? { clearCategory: !form.categoryId } : {}),
       };
       if (editHabit) {
         await api.patch(`/habits/${editHabit.id}`, payload);
-        toast.success('Đã cập nhật thói quen!');
+        toast.success(t('Đã cập nhật thói quen!'));
       } else {
         await api.post('/habits', payload);
-        toast.success('Đã tạo thói quen mới! 🎯');
+        toast.success(t('Đã tạo thói quen mới! 🎯'));
       }
       resetForm();
       setEditHabit(null);
       setShowModal(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Có lỗi xảy ra');
-    }
+      toast.error(t(err.response?.data?.detail || 'Có lỗi xảy ra'));
+    } finally { mutation.current = false; setBusy(false); }
   };
 
   const handleDelete = async (id) => {
+    if (mutation.current) return;
+    mutation.current = true; setBusy(true);
     try {
       await api.delete(`/habits/${id}`);
-      toast.info('Đã tắt thói quen');
+      toast.info(t('Đã tắt thói quen'));
       setConfirmDelete(null);
       load();
     } catch {
-      toast.error('Không thể tắt thói quen');
-    }
+      toast.error(t('Không thể tắt thói quen'));
+    } finally { mutation.current = false; setBusy(false); }
+  };
+
+  const restoreHabit = async (id) => {
+    if (mutation.current) return;
+    mutation.current = true; setBusy(true);
+    try {
+      await api.patch('/habits/' + id, { active: true });
+      toast.success(t('Đã bật lại thói quen.'));
+      await load();
+    } catch (error) {
+      toast.error(t(error.response?.data?.detail || 'Chưa xác nhận được kết quả. Hãy tải lại danh sách và thử lại.'));
+      await load();
+    } finally { mutation.current = false; setBusy(false); }
+  };
+
+  const moveHabit = async (habitId, direction) => {
+    if (mutation.current) return;
+    const index = habits.findIndex(h => h.id === habitId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= habits.length) return;
+    const reordered = [...habits];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    mutation.current = true; setBusy(true);
+    try {
+      const response = await api.patch('/habits/reorder', {
+        items: reordered.map((h, sortOrder) => ({ id: h.id, sortOrder, stackGroup: h.stackGroup ?? null })),
+      });
+      setHabits(response.data);
+    } catch {
+      toast.error(t('Chưa xác nhận được thứ tự mới. Đang tải lại danh sách.'));
+      await load();
+    } finally { mutation.current = false; setBusy(false); }
   };
 
   const applyTemplate = async (template) => {
+    if (mutation.current || pending?.invalid) return;
+    mutation.current = true; setBusy(true);
     try {
-      let count = 0;
-      for (const h of template.habits) {
-        await api.post('/habits', h);
-        count++;
-      }
-      toast.success(`📦 Đã tạo ${count} thói quen từ "${template.name}"!`);
+      const payload = readHabitBatch(sessionStorage, userId) ?? {
+        requestId: crypto.randomUUID(),
+        habits: template.habits.map(h => ({ ...h, name: t(h.name), tags: t(h.tags) })),
+      };
+      saveHabitBatch(sessionStorage, userId, payload);
+      setPending(payload);
+      const result = await api.post('/habits/batch', payload);
+      clearHabitBatch(sessionStorage, userId);
+      setPending(null);
+      toast.success(t('📦 Đã tạo {count} thói quen từ "{name}"!', { count: result.data.length, name: template ? t(template.name) : t('Bộ thói quen') }));
       setShowTemplates(false);
-      load();
+      await load();
     } catch (err) {
-      toast.error('Có lỗi khi tạo thói quen từ template');
-    }
+      if ([400, 404, 422].includes(err.response?.status)) {
+        try { clearHabitBatch(sessionStorage, userId); setPending(null); } catch { /* Keep pending on storage failure. */ }
+      } else {
+        try { setPending(readHabitBatch(sessionStorage, userId)); } catch { setPending({ invalid: true }); }
+      }
+      toast.error(t(err.response?.data?.detail || 'Chưa xác nhận được kết quả. Hãy kiểm tra danh sách trước khi tạo lại mẫu.'));
+      setShowTemplates(false);
+      await load();
+    } finally { mutation.current = false; setBusy(false); }
   };
 
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
+  const visibleHabits = view === 'active' ? habits : inactive;
   const filteredHabits = filter === 'all'
-    ? habits
-    : habits.filter(h => h.categoryId?.toString() === filter);
+    ? visibleHabits
+    : visibleHabits.filter(h => h.categoryId?.toString() === filter);
 
-  const difficultyLabel = (d) => d === 'HARD' ? 'Khó' : d === 'MEDIUM' ? 'Trung bình' : 'Dễ';
+  const difficultyLabel = (d) => d === 'HARD' ? t('Khó') : d === 'MEDIUM' ? t('Trung bình') : t('Dễ');
 
   return (
     <div className="fade-in">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1>🎯 Thói quen</h1>
-          <p>Quản lý các thói quen hàng ngày</p>
+          <h1>{t('🎯 Thói quen')}</h1>
+          <p>{t('Quản lý các thói quen hàng ngày')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="btn btn-secondary" onClick={() => setShowTemplates(true)}>📦 Templates</button>
-          <button className="btn btn-primary" onClick={openCreate}>+ Tạo mới</button>
+          <button disabled={busy || !!pending} className="btn btn-secondary" onClick={() => { if (!pending) setShowTemplates(true); }}>{t('📦 Templates')}</button>
+          <button disabled={busy} className="btn btn-primary" onClick={openCreate}>{t('+ Tạo mới')}</button>
         </div>
       </div>
 
+      {loadError && <div role="alert" className="card">
+        <p>{t('Không thể tải dữ liệu.')}</p>
+        <button disabled={busy} className="btn btn-secondary" onClick={load}>{t('Thử lại')}</button>
+      </div>}
+      {pending && <div className="card" role="status">
+        <p>{t('Có bộ thói quen chưa xác nhận. Thử lại sẽ dùng cùng mã yêu cầu.')}</p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={busy || pending.invalid} onClick={() => applyTemplate(null)}>{t('Thử lại')}</button>
+          <button className="btn btn-secondary" disabled={busy} onClick={() => {
+            if (!window.confirm(t('Bộ thói quen có thể đã được tạo. Kiểm tra danh sách trước khi bỏ yêu cầu chờ.'))) return;
+            try { clearHabitBatch(sessionStorage, userId); setPending(null); }
+            catch { toast.error(t('Không thể lưu trên thiết bị này.')); }
+          }}>{t('Bỏ yêu cầu chờ')}</button>
+        </div>
+      </div>}
+      <div className="filter-bar" aria-label={t('Trạng thái thói quen')}>
+        <button className={view === 'active' ? 'filter-chip active' : 'filter-chip'} disabled={busy} aria-pressed={view === 'active'} onClick={() => setView('active')}>{t('Đang bật')} ({habits.length})</button>
+        <button className={view === 'inactive' ? 'filter-chip active' : 'filter-chip'} disabled={busy} aria-pressed={view === 'inactive'} onClick={() => setView('inactive')}>{t('Đã tắt')} ({inactive.length})</button>
+      </div>
+      {view === 'inactive' && <p>{t('Thói quen đã tắt vẫn giữ lịch sử. Bật lại sẽ tính vào giới hạn thói quen đang hoạt động.')}</p>}
       {/* Filter Bar */}
       {categories.length > 0 && (
         <div className="filter-bar">
-          <button className={`filter-chip ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>Tất cả</button>
+          <button disabled={busy} className={`filter-chip ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>{t('Tất cả')}</button>
           {categories.map(c => (
-            <button key={c.id} className={`filter-chip ${filter === c.id.toString() ? 'active' : ''}`} onClick={() => setFilter(c.id.toString())}>
-              {c.icon} {c.name}
+            <button disabled={busy} key={c.id} className={`filter-chip ${filter === c.id.toString() ? 'active' : ''}`} onClick={() => setFilter(c.id.toString())}>
+              {c.icon} {localizedCategory(language, c)}
             </button>
           ))}
         </div>
       )}
 
-      {filteredHabits.length === 0 ? (
+      {loadError && habits.length === 0 ? null : filteredHabits.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">🎯</div>
-          <p>{filter !== 'all' ? 'Không có thói quen nào trong danh mục này' : 'Chưa có thói quen nào'}</p>
+          <p>{filter !== 'all' ? t('Không có thói quen nào trong danh mục này') : t(view === 'inactive' ? 'Không có thói quen đã tắt.' : 'Chưa có thói quen nào')}</p>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={openCreate}>Tạo thói quen đầu tiên</button>
-            <button className="btn btn-secondary" onClick={() => setShowTemplates(true)}>📦 Dùng template</button>
+            <button disabled={busy} className="btn btn-primary" onClick={openCreate}>{t('Tạo thói quen đầu tiên')}</button>
+            <button disabled={busy} className="btn btn-secondary" onClick={() => setShowTemplates(true)}>{t('📦 Dùng template')}</button>
           </div>
         </div>
       ) : (
@@ -198,16 +294,20 @@ export default function HabitsPage() {
                   <span className={`badge badge-${h.difficulty === 'HARD' ? 'danger' : h.difficulty === 'MEDIUM' ? 'warning' : 'success'}`}>
                     {difficultyLabel(h.difficulty)}
                   </span>
-                  <span>{h.points} điểm</span>
-                  <span>{h.targetPerWeek}x/tuần</span>
-                  {h.categoryName && <span>📁 {h.categoryName}</span>}
+                  <span>{t('{points} điểm', { points: h.points })}</span>
+                  <span>{t('{count}x/tuần', { count: h.targetPerWeek })}</span>
+                  {h.categoryName && <span>📁 {localizedCategory(language, categories.find(category => category.id === h.categoryId)) ?? h.categoryName}</span>}
                   {h.tags && <span>🏷️ {h.tags}</span>}
                 </div>
                 {h.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{h.description}</div>}
               </div>
               <div className="habit-actions">
-                <button className="btn btn-ghost btn-sm" onClick={() => openEdit(h)} title="Chỉnh sửa">✏️</button>
-                <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(h.id)} title="Tắt">Tắt</button>
+                {view === 'active' && isPremium && filter === 'all' && habits.length <= 500 && <>
+                  <button className="btn btn-ghost btn-sm" disabled={busy || i === 0} onClick={() => moveHabit(h.id, -1)} aria-label={t('Đưa lên: {name}', { name: h.name })}>↑</button>
+                  <button className="btn btn-ghost btn-sm" disabled={busy || i === habits.length - 1} onClick={() => moveHabit(h.id, 1)} aria-label={t('Đưa xuống: {name}', { name: h.name })}>↓</button>
+                </>}
+                <button disabled={busy} className="btn btn-ghost btn-sm" onClick={() => openEdit(h)} title={t('Chỉnh sửa')}>✏️</button>
+                {h.active ? <button disabled={busy} className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(h.id)}>{t('Tắt')}</button> : <button disabled={busy} className="btn btn-secondary btn-sm" onClick={() => restoreHabit(h.id)}>{t('Bật lại')}</button>}
               </div>
             </div>
           ))}
@@ -216,22 +316,23 @@ export default function HabitsPage() {
 
       {/* Templates Modal */}
       {showTemplates && (
-        <div className="modal-overlay" onClick={() => setShowTemplates(false)}>
+        <div className="modal-overlay" onClick={() => { if (!mutation.current) setShowTemplates(false); }}>
           <div className="modal scale-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            <h2 className="modal-title">📦 Chọn Template</h2>
+            <h2 className="modal-title">{t('📦 Chọn Template')}</h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-              Tạo nhanh nhiều thói quen cùng lúc từ bộ template có sẵn
+              {t('Tạo nhanh nhiều thói quen cùng lúc từ bộ template có sẵn')}
             </p>
+            {busy && <p role="status">{t('Đang tải…')}</p>}
             <div className="template-grid">
-              {HABIT_TEMPLATES.map((t, i) => (
-                <div key={i} className="template-card" onClick={() => applyTemplate(t)}>
-                  <div className="template-card-icon">{t.icon}</div>
-                  <div className="template-card-name">{t.name}</div>
-                  <div className="template-card-desc">{t.desc}</div>
+              {HABIT_TEMPLATES.map((template, i) => (
+                <div key={i} className="template-card" role="button" tabIndex={busy ? -1 : 0} aria-disabled={busy} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); applyTemplate(template); } }} onClick={() => applyTemplate(template)}>
+                  <div className="template-card-icon">{template.icon}</div>
+                  <div className="template-card-name">{t(template.name)}</div>
+                  <div className="template-card-desc">{t(template.desc)}</div>
                   <div className="template-card-habits">
-                    {t.habits.map((h, j) => (
+                    {template.habits.map((h, j) => (
                       <span key={j} className={`badge badge-${h.difficulty === 'HARD' ? 'danger' : h.difficulty === 'MEDIUM' ? 'warning' : 'success'}`}>
-                        {h.name}
+                        {t(h.name)}
                       </span>
                     ))}
                   </div>
@@ -239,7 +340,7 @@ export default function HabitsPage() {
               ))}
             </div>
             <div className="modal-actions" style={{ marginTop: '1rem' }}>
-              <button className="btn btn-secondary" onClick={() => setShowTemplates(false)}>Đóng</button>
+              <button disabled={busy} className="btn btn-secondary" onClick={() => setShowTemplates(false)}>{t('Đóng')}</button>
             </div>
           </div>
         </div>
@@ -247,62 +348,62 @@ export default function HabitsPage() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => { setShowModal(false); setEditHabit(null); }}>
+        <div className="modal-overlay" onClick={() => { if (!mutation.current) { setShowModal(false); setEditHabit(null); } }}>
           <div className="modal scale-in" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">{editHabit ? 'Chỉnh sửa thói quen' : 'Tạo thói quen mới'}</h2>
-            <form onSubmit={handleSubmit}>
+            <h2 className="modal-title">{editHabit ? t('Chỉnh sửa thói quen') : t('Tạo thói quen mới')}</h2>
+            <form onSubmit={handleSubmit}><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div className="form-group">
-                <label className="form-label">Tên thói quen *</label>
-                <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="VD: Đọc sách 20 phút" />
+                <label className="form-label">{t('Tên thói quen *')}</label>
+                <input className="form-input" maxLength={255} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder={t('VD: Đọc sách 20 phút')} />
               </div>
               <div className="form-group">
-                <label className="form-label">Mô tả</label>
-                <textarea className="form-textarea" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Mô tả chi tiết" />
+                <label className="form-label">{t('Mô tả')}</label>
+                <textarea className="form-textarea" maxLength={255} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={t('Mô tả chi tiết')} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
-                  <label className="form-label">Độ khó</label>
+                  <label className="form-label">{t('Độ khó')}</label>
                   <select className="form-select" value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}>
-                    <option value="EASY">Dễ (5 điểm)</option>
-                    <option value="MEDIUM">Trung bình (10 điểm)</option>
-                    <option value="HARD">Khó (20 điểm)</option>
+                    <option value="EASY">{t('Dễ (5 điểm)')}</option>
+                    <option value="MEDIUM">{t('Trung bình (10 điểm)')}</option>
+                    <option value="HARD">{t('Khó (20 điểm)')}</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Mục tiêu / tuần</label>
+                  <label className="form-label">{t('Mục tiêu / tuần')}</label>
                   <input type="number" className="form-input" min="1" max="7" value={form.targetPerWeek} onChange={e => setForm({ ...form, targetPerWeek: e.target.value })} />
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Danh mục</label>
+                <label className="form-label">{t('Danh mục')}</label>
                 <select className="form-select" value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })}>
-                  <option value="">-- Không chọn --</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                  <option value="">{t('-- Không chọn --')}</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {localizedCategory(language, c)}</option>)}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Tags (cách bởi dấu phẩy)</label>
-                <input className="form-input" value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder="VD: sức khỏe, buổi sáng" />
+                <label className="form-label">{t('Tags (cách bởi dấu phẩy)')}</label>
+                <input className="form-input" maxLength={255} value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder={t('VD: sức khỏe, buổi sáng')} />
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); setEditHabit(null); }}>Hủy</button>
-                <button type="submit" className="btn btn-primary">{editHabit ? 'Cập nhật' : 'Tạo'}</button>
+                <button disabled={busy} type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); setEditHabit(null); }}>{t('Hủy')}</button>
+                <button disabled={busy} type="submit" className="btn btn-primary">{editHabit ? t('Cập nhật') : t('Tạo')}</button>
               </div>
-            </form>
+            </fieldset></form>
           </div>
         </div>
       )}
 
       {/* Confirm Delete Modal */}
       {confirmDelete && (
-        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+        <div className="modal-overlay" onClick={() => { if (!mutation.current) setConfirmDelete(null); }}>
           <div className="modal scale-in" onClick={e => e.stopPropagation()}>
             <div className="confirm-dialog">
               <div className="confirm-icon">⚠️</div>
-              <div className="confirm-text">Bạn có chắc muốn tắt thói quen này?<br />Thói quen sẽ không hiển thị nữa nhưng dữ liệu vẫn được giữ lại.</div>
+              <div className="confirm-text">{t('Bạn có chắc muốn tắt thói quen này?')}<br />{t('Thói quen sẽ không hiển thị nữa nhưng dữ liệu vẫn được giữ lại.')}</div>
               <div className="confirm-actions">
-                <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>Hủy</button>
-                <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete)}>Tắt thói quen</button>
+                <button disabled={busy} className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>{t('Hủy')}</button>
+                <button disabled={busy} className="btn btn-danger" onClick={() => handleDelete(confirmDelete)}>{t('Tắt thói quen')}</button>
               </div>
             </div>
           </div>

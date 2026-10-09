@@ -2,7 +2,7 @@ package com.selfforge.discipline.habit;
 
 import com.selfforge.discipline.auth.AppUser;
 import com.selfforge.discipline.auth.CurrentUserService;
-import com.selfforge.discipline.auth.PremiumController;
+
 import com.selfforge.discipline.common.RequirePremium;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -27,12 +27,10 @@ import static com.selfforge.discipline.habit.HabitRequests.UpdateHabitRequest;
 public class HabitController {
 
     private final HabitService habitService;
-    private final HabitRepository habitRepository;
     private final CurrentUserService currentUserService;
 
-    public HabitController(HabitService habitService, HabitRepository habitRepository, CurrentUserService currentUserService) {
+    public HabitController(HabitService habitService, CurrentUserService currentUserService) {
         this.habitService = habitService;
-        this.habitRepository = habitRepository;
         this.currentUserService = currentUserService;
     }
 
@@ -41,20 +39,29 @@ public class HabitController {
         return habitService.listActive(currentUserService.requireUser(servletRequest));
     }
 
+    @GetMapping("/inactive")
+    public List<HabitResponse> inactive(HttpServletRequest request) {
+        return habitService.listInactive(currentUserService.requireUser(request));
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public HabitResponse create(@Valid @RequestBody CreateHabitRequest request, HttpServletRequest servletRequest) {
         AppUser user = currentUserService.requireUser(servletRequest);
-        // Enforce habit limit for free users
-        if (!user.isPremium()) {
-            int activeCount = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId()).size();
-            if (activeCount >= PremiumController.FREE_MAX_HABITS) {
-                throw new IllegalStateException(
-                        "Bạn đã đạt giới hạn " + PremiumController.FREE_MAX_HABITS
-                                + " thói quen. Nâng cấp Premium để tạo không giới hạn!");
-            }
-        }
         return habitService.create(user, request);
+    }
+
+    public record BatchCreateRequest(
+            @jakarta.validation.constraints.NotEmpty
+            @jakarta.validation.constraints.Size(max = 10)
+            List<@jakarta.validation.constraints.NotNull @Valid CreateHabitRequest> habits,
+            java.util.UUID requestId) {}
+
+    @PostMapping("/batch")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<HabitResponse> createBatch(@Valid @RequestBody BatchCreateRequest request,
+                                           HttpServletRequest servletRequest) {
+        return habitService.createBatch(currentUserService.requireUser(servletRequest), request.habits(), request.requestId());
     }
 
     @PatchMapping("/{id}")
@@ -72,24 +79,18 @@ public class HabitController {
         habitService.deactivate(currentUserService.requireUser(servletRequest), id);
     }
 
-    public record ReorderRequest(List<ReorderItem> items) {}
-    public record ReorderItem(Long id, int sortOrder, String stackGroup) {}
+    public record ReorderRequest(
+            @jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max = 500)
+            List<@jakarta.validation.constraints.NotNull @Valid ReorderItem> items) {}
+    public record ReorderItem(
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Positive Long id,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0)
+            @jakarta.validation.constraints.Max(1000000) Integer sortOrder,
+            @jakarta.validation.constraints.Size(max = 255) String stackGroup) {}
 
     @RequirePremium
     @PatchMapping("/reorder")
-    @org.springframework.transaction.annotation.Transactional
-    public List<HabitResponse> reorder(@RequestBody ReorderRequest request, HttpServletRequest servletRequest) {
-        var user = currentUserService.requireUser(servletRequest);
-        List<Habit> habits = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId());
-        for (var item : request.items()) {
-            habits.stream()
-                    .filter(h -> h.getId().equals(item.id()))
-                    .findFirst()
-                    .ifPresent(h -> {
-                        h.setSortOrder(item.sortOrder());
-                        h.setStackGroup(item.stackGroup());
-                    });
-        }
-        return habitService.listActive(user);
+    public List<HabitResponse> reorder(@Valid @RequestBody ReorderRequest request, HttpServletRequest servletRequest) {
+        return habitService.reorder(currentUserService.requireUser(servletRequest), request.items());
     }
 }

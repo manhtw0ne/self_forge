@@ -1,5 +1,7 @@
 # SelfForge
 
+Kế hoạch đưa ứng dụng lên mức sản phẩm public: [kế hoạch sửa lỗi, nâng cấp và nghiệm thu](docs/PUBLIC_PRODUCT_UPGRADE_PLAN.md) (22/09/2026).
+
 > Chưa sẵn sàng mở public. Xem [đánh giá](docs/PRODUCTION_READINESS.md), [kế hoạch nâng cấp](docs/UPGRADE_EXECUTION_PLAN.md), [kết quả](docs/UPGRADE_RESULTS.md) và [runbook deploy](docs/DEPLOY_RUNBOOK.md).
 
 Backend Java/Spring Boot cho ứng dụng kỷ luật bản thân. Project hiện có REST API và giao diện web tĩnh chạy trực tiếp cùng Spring Boot.

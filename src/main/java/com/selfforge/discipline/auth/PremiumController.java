@@ -36,8 +36,8 @@ public class PremiumController {
     /** Free-tier limits */
     public static final int FREE_MAX_HABITS = 10;
     public static final int FREE_MAX_GOALS = 3;
-    public static final int FREE_JOURNAL_DAYS = 7;
-    public static final int FREE_MOOD_DAYS = 7;
+    public static final int FREE_JOURNAL_DAYS = -1;
+    public static final int FREE_MOOD_DAYS = -1;
     public static final int FREE_FREEZE_PER_MONTH = 1;
     public static final int PREMIUM_FREEZE_PER_MONTH = 5;
 

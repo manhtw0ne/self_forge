@@ -141,6 +141,7 @@ public class Habit {
             this.description = description;
         }
         if (difficulty != null) {
+            if (difficulty != this.difficulty && points == null) this.points = difficulty.defaultPoints();
             this.difficulty = difficulty;
         }
         if (targetPerWeek != null) {

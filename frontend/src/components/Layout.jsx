@@ -1,50 +1,58 @@
+import brandLogo from '../assets/LogoSF.png';
+import LanguageSelector from '../components/LanguageSelector';
+import { useLanguage } from '../context/useLanguage';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { useTheme } from '../context/ThemeContext';
 import { usePremium } from '../context/PremiumContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import api from '../api/client';
 
 // Premium-only routes that show a lock icon for free users
 const PREMIUM_ROUTES = ['/review'];
 
 export default function Layout({ children }) {
+  const { t } = useLanguage();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { isPremium } = usePremium();
   const navigate = useNavigate();
   const [level, setLevel] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const logoutBusy = useRef(false);
 
   useEffect(() => {
     api.get('/rewards/progress').then(r => setLevel(r.data)).catch(() => {});
   }, []);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    if (logoutBusy.current) return;
+    logoutBusy.current = true; setSigningOut(true);
+    try { await logout(); navigate('/login'); }
+    finally { logoutBusy.current = false; setSigningOut(false); }
   };
 
   const closeSidebar = () => setSidebarOpen(false);
 
   const links = [
     { to: '/', icon: '📊', label: 'Dashboard' },
-    { to: '/habits', icon: '🎯', label: 'Thói quen' },
-    { to: '/journal', icon: '📝', label: 'Nhật ký' },
-    { to: '/stats', icon: '📈', label: 'Thống kê' },
-    { to: '/challenges', icon: '⚡', label: 'Thử thách' },
-    { to: '/rewards', icon: '🏆', label: 'Thành tựu' },
+    { to: '/habits', icon: '🎯', label: t('Thói quen') },
+    { to: '/journal', icon: '📝', label: t('Nhật ký') },
+    { to: '/stats', icon: '📈', label: t('Thống kê') },
+    { to: '/challenges', icon: '⚡', label: t('Thử thách') },
+    { to: '/rewards', icon: '🏆', label: t('Thành tựu') },
     { to: '/pomodoro', icon: '⏱', label: 'Pomodoro' },
-    { to: '/review', icon: '📋', label: 'Review tuần' },
-    { to: '/goals', icon: '🎯', label: 'Mục tiêu' },
-    { to: '/reminders', icon: '🔔', label: 'Nhắc nhở' },
-    { to: '/profile', icon: '👤', label: 'Cá nhân' },
+    { to: '/review', icon: '📋', label: t('Review tuần') },
+    { to: '/goals', icon: '🎯', label: t('Mục tiêu') },
+    { to: '/reminders', icon: '🔔', label: t('Nhắc nhở') },
+    { to: '/profile', icon: '👤', label: t('Cá nhân') },
   ];
 
   return (
     <div className="app-layout">
       {/* Mobile hamburger */}
-      <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} aria-label="Mở menu">
+      <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} aria-label={t('Mở menu')}>
         <span className="hamburger-line" />
         <span className="hamburger-line" />
         <span className="hamburger-line" />
@@ -55,8 +63,8 @@ export default function Layout({ children }) {
 
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand">
-          <h1>⚔️ SelfForge</h1>
-          <p>Kỷ luật bản thân</p>
+          <h1 className="brand-heading"><img src={brandLogo} className="brand-logo" alt="" width="48" height="48" />SelfForge</h1>
+          <p>{t('Kỷ luật bản thân')}</p>
         </div>
         <nav className="sidebar-nav">
           {links.map(l => (
@@ -83,19 +91,19 @@ export default function Layout({ children }) {
               onClick={closeSidebar}
             >
               <span className="nav-icon">⭐</span>
-              Nâng cấp Premium
+              {t('Nâng cấp Premium')}
             </NavLink>
           )}
         </nav>
-        <div className="sidebar-footer">
+        <div className="sidebar-footer"><LanguageSelector />
           {/* Theme Toggle */}
-          <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Chuyển sang sáng' : 'Chuyển sang tối'}>
+          <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'dark' ? t('Chuyển sang sáng') : t('Chuyển sang tối')}>
             <span className="theme-toggle-track">
               <span className={`theme-toggle-thumb ${theme === 'light' ? 'light' : ''}`}>
                 {theme === 'dark' ? '🌙' : '☀️'}
               </span>
             </span>
-            <span className="theme-toggle-label">{theme === 'dark' ? 'Tối' : 'Sáng'}</span>
+            <span className="theme-toggle-label">{theme === 'dark' ? t('Tối') : t('Sáng')}</span>
           </button>
 
           <div className="sidebar-user">
@@ -109,12 +117,12 @@ export default function Layout({ children }) {
                 {isPremium && <span className="premium-badge-inline">PRO</span>}
               </div>
               <div className="sidebar-user-level">
-                Level {level?.level || 1} · {level?.totalXp || 0} XP
+                {t('Cấp {level} · {xp} XP', { level: level?.level || 1, xp: level?.totalXp || 0 })}
               </div>
             </div>
           </div>
-          <button className="btn btn-secondary btn-sm" style={{ width: '100%', marginTop: '0.75rem' }} onClick={handleLogout}>
-            Đăng xuất
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%', marginTop: '0.75rem' }} disabled={signingOut} onClick={handleLogout}>
+            {t('Đăng xuất')}
           </button>
         </div>
       </aside>
