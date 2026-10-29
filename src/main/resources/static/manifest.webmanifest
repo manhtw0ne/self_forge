@@ -1,0 +1,46 @@
+{
+  "id": "/",
+  "name": "SelfForge",
+  "short_name": "SelfForge",
+  "description": "Theo dõi thói quen và xây dựng kỷ luật mỗi ngày.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d1424",
+  "theme_color": "#0c0b1b",
+  "shortcuts": [
+    {
+      "name": "Hôm nay",
+      "short_name": "Hôm nay",
+      "description": "Mở bảng điều khiển hôm nay",
+      "url": "/"
+    },
+    {
+      "name": "Tập trung",
+      "short_name": "Pomodoro",
+      "description": "Bắt đầu một phiên tập trung",
+      "url": "/pomodoro"
+    },
+    {
+      "name": "Nhật ký",
+      "short_name": "Nhật ký",
+      "description": "Mở nhật ký mỗi ngày",
+      "url": "/journal"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ]
+}

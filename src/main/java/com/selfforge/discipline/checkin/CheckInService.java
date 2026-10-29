@@ -33,12 +33,15 @@ public class CheckInService {
     private final StreakService streakService;
     private final AppUserRepository users;
     private final CheckInXpAdjustmentRepository adjustments;
+    private final com.selfforge.discipline.challenge.ChallengeService challenges;
 
     public CheckInService(DailyCheckInRepository checkInRepository, HabitService habitService,
                           RewardService rewardService, PenaltyService penaltyService,
                           StreakService streakService, AppUserRepository users,
-                          CheckInXpAdjustmentRepository adjustments, UserTime userTime) {
+                          CheckInXpAdjustmentRepository adjustments, UserTime userTime,
+                          com.selfforge.discipline.challenge.ChallengeService challenges) {
         this.userTime = userTime;
+        this.challenges = challenges;
         this.checkInRepository = checkInRepository;
         this.habitService = habitService;
         this.rewardService = rewardService;
@@ -61,13 +64,23 @@ public class CheckInService {
         Habit habit = habitService.getHabit(user, request.habitId());
         DailyCheckIn checkIn = checkInRepository.findByHabit_User_IdAndHabitIdAndDate(user.getId(), habit.getId(), date)
                 .orElse(null);
+        if (request.expected() != null) {
+            var expected = request.expected();
+            if (checkIn == null || !java.util.Objects.equals(expected.id(), checkIn.getId()) ||
+                    expected.status() != checkIn.getStatus() ||
+                    !java.util.Objects.equals(expected.note() == null ? "" : expected.note(), checkIn.getNote() == null ? "" : checkIn.getNote())) {
+                throw new IllegalStateException("Check-in trên máy chủ đã thay đổi. Ghi chú đang nhập được giữ; tải lại trước khi sửa tiếp.");
+            }
+        }
         if (checkIn != null && checkIn.getStatus() == request.status()) {
             checkIn.update(request.status(), request.note());
+            checkInRepository.flush();
+            challenges.reconcileForHabit(user, habit.getId(), date);
             return CheckInResponse.from(checkIn);
         }
         CheckInStatus previousStatus = checkIn == null ? null : checkIn.getStatus();
         if (checkIn == null) {
-            int previousStreak = streakService.endingOn(user.getId(), habit.getId(), date.minusDays(1));
+            int previousStreak = streakService.endingOn(user.getId(), habit.getId(), date.minusDays(1), habit.getTargetPerWeek());
             int streakPenalty = previousStreak >= 30 ? 50 : previousStreak >= 21 ? 30 : previousStreak >= 7 ? 15 : 0;
             checkIn = new DailyCheckIn(habit, date, request.status(), request.note());
             checkIn.initializeAccounting(habit.getPoints(), Math.max(1, habit.getPoints() / 2) + streakPenalty);
@@ -90,6 +103,8 @@ public class CheckInService {
         checkIn.setAppliedXp(newEffect);
         adjustments.save(new CheckInXpAdjustment(checkIn, previousStatus, request.status(), newEffect - oldEffect));
         if (request.status() == CheckInStatus.COMPLETED) rewardService.checkAndGrantAchievements(user);
+        checkInRepository.flush();
+        challenges.reconcileForHabit(user, habit.getId(), date);
         return CheckInResponse.from(checkIn);
     }
 
@@ -109,6 +124,11 @@ public class CheckInService {
     @Transactional(readOnly = true)
     public int currentStreak(AppUser user, Long habitId, LocalDate today) {
         return streakService.current(user.getId(), habitId, today);
+    }
+
+    @Transactional(readOnly = true)
+    public int currentStreak(AppUser user, Long habitId, LocalDate today, int targetPerWeek) {
+        return streakService.current(user.getId(), habitId, today, targetPerWeek);
     }
 
     @Transactional(readOnly = true)

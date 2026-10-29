@@ -32,9 +32,13 @@ public class ExportController {
     private final DailyCheckInRepository checkInRepository;
     private final JournalRepository journalRepository;
 
+    private final ExportRateLimiter exportRateLimiter;
+
     public ExportController(CurrentUserService currentUserService, HabitRepository habitRepository,
-                            DailyCheckInRepository checkInRepository, JournalRepository journalRepository, UserTime userTime) {
+                            DailyCheckInRepository checkInRepository, JournalRepository journalRepository,
+                            UserTime userTime, ExportRateLimiter exportRateLimiter) {
         this.userTime = userTime;
+        this.exportRateLimiter = exportRateLimiter;
         this.currentUserService = currentUserService;
         this.habitRepository = habitRepository;
         this.checkInRepository = checkInRepository;
@@ -45,6 +49,7 @@ public class ExportController {
     @GetMapping("/csv")
     public void exportCsv(HttpServletRequest request, HttpServletResponse response) throws Exception {
         AppUser user = currentUserService.requireUser(request);
+        exportRateLimiter.acquire(user.getId());
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"selfforge_export.csv\"");
