@@ -1,6 +1,8 @@
 # SelfForge — Kế hoạch sửa lỗi và nâng cấp thành sản phẩm public
 
-**Mốc kiểm chứng hiện tại (07/10/2026, batch 41):** 147 tests backend và 56 integration tests trên PostgreSQL 16.15 đạt, Flyway V1–V8. Frontend: 38 tests đạt ở batch 40. Phase 1 vẫn đang triển khai; chưa nghiệm thu public toàn bộ, chưa deploy các thay đổi này. Các ghi chú bên dưới là lịch sử từng đợt.
+**Phạm vi hiện hành — 2026-11-02:** Ưu tiên hoàn thiện lõi sản phẩm. Chỉ thử nghiệm AI tổng kết tuần (AI-2A) sau khi đủ điều kiện dữ liệu, consent, ngân sách và đo lường; tạm dừng mở rộng AI mục tiêu, bắt đầu lại, nhật ký, kế hoạch ngày và Chat Coach. Xem [DEVELOPMENT_PRIORITIES.md](DEVELOPMENT_PRIORITIES.md) cho thứ tự công việc và điều kiện mở lại. Quyết định này thay thế thứ tự AI trong các ghi chú cũ.
+
+**Mốc kiểm chứng lịch sử (07/10/2026, batch 41):** 147 tests backend và 56 integration tests trên PostgreSQL 16.15 đạt, Flyway V1–V8. Frontend: 38 tests đạt ở batch 40. Kết quả mới hơn nằm trong [TASK_PROGRESS.md](../TASK_PROGRESS.md); các ghi chú bên dưới là lịch sử từng đợt, không phải xác nhận sẵn sàng public hiện tại.
 
 
 Ngày lập: 22/09/2026; cập nhật 24/09/2026. Trạng thái: đang triển khai Phase 1/A1. Đã sửa request lặp, điều chỉnh XP check-in mới và kiểm tra thời gian/phiên Pomodoro chồng nhau. Xem [đợt 1](PHASE_1_BATCH_1_RESULTS.md), [đợt 2](PHASE_1_BATCH_2_RESULTS.md), [đợt 3](PHASE_1_BATCH_3_RESULTS.md); chưa hoàn tất A1.
@@ -291,7 +293,7 @@ Tạo issue theo mã A1, A2…; chia mỗi mục lớn thành thay đổi có th
 | G | Chưa bắt đầu | Chưa phân công | — | — | Capacitor/store |
 | H | Chưa bắt đầu | Chưa phân công | — | — | Thanh toán |
 | I | Chưa bắt đầu | Chưa phân công | — | — | Đa ngôn ngữ Việt/Anh, định dạng và email |
-| AI-2 | Chưa bắt đầu | Chưa phân công | — | — | Tổng kết tuần, kế hoạch mục tiêu và bắt đầu lại; xem AI_PHASE_2_PLAN.md |
+| AI-2 | Chỉ weekly trong phạm vi thử nghiệm sau lõi; các luồng khác tạm dừng mở rộng | Chưa phân công | 2026-11-02 | Chưa kết luận ROI | Xem DEVELOPMENT_PRIORITIES.md và AI_PHASE_2_PLAN.md |
 | COMPANION-3 | Chưa bắt đầu | Chưa phân công | — | — | Bạn đồng hành, XP và ba hình thái; xem COMPANION_PHASE_3_PLAN.md |
 
 Mỗi lần hoàn thành một đợt, cập nhật bảng và báo cáo kết quả: thay đổi gì, đã kiểm chứng thế nào, hạn chế nào còn tồn tại và đủ điều kiện chuyển sang đợt tiếp theo hay chưa.
@@ -406,13 +408,13 @@ Tài liệu tham khảo chính thức đã đối chiếu khi bổ sung kế ho�
 
 ## 16. Giai đoạn sản phẩm 2 — AI hỗ trợ duy trì thói quen
 
-Theo yêu cầu chủ dự án, AI được đưa vào giai đoạn nâng cấp thứ hai, sau khi lõi public đạt các cổng nghiệm thu. Đây là giai đoạn sản phẩm, không phải “đợt 2 — tài khoản” trong bảng triển khai mục 12. Không yêu cầu chờ phát hành store mới được thử AI trên web.
+Theo quyết định 2026-11-02 của chủ dự án, ưu tiên hoàn thiện phần cốt lõi trước và chỉ thử nghiệm AI tổng kết tuần. Đây là thử nghiệm sản phẩm sau khi các điều kiện lõi/dữ liệu của luồng này đạt; không yêu cầu chờ phát hành store.
 
-Phạm vi bản AI đầu tiên: (1) tổng kết tuần có căn cứ; (2) biến mục tiêu thành kế hoạch để người dùng duyệt; (3) chế độ bắt đầu lại trong 3 ngày sau khi mất nhịp. Phản hồi nhật ký, lập kế hoạch hôm nay và Chat Coach thuộc các đợt mở rộng sau.
+Phạm vi AI hiện hành: tổng kết tuần có căn cứ, người dùng chủ động tạo, kết quả ngắn và đề xuất cần được duyệt. Tạm dừng mở rộng GOAL/AI-2B, RESTART/AI-2C, JOURNAL, DAILY_FOCUS và CHAT. Giữ code/dữ liệu đã có; chỉ mở lại khi chủ dự án có quyết định mới, không tự chuyển chúng thành các đợt mở rộng sau weekly.
 
-AI không tự tính lại số liệu, streak, XP hoặc sửa dữ liệu nghiệp vụ. Nhật ký chỉ được đưa vào ngữ cảnh khi người dùng chủ động bật. Chi phí AI có ngân sách/quota riêng và không nằm trong ước tính vận hành trước đó.
+AI không tự tính lại số liệu, streak, XP hoặc sửa dữ liệu nghiệp vụ. Beta weekly đầu dùng số liệu có cấu trúc và không gửi nội dung nhật ký. Có quota, trần ngân sách, kết quả đã lưu và fallback không AI. So sánh với tổng kết bằng thống kê/mẫu, đo hành động sau đề xuất, retention và chi phí thực tế trước khi quyết định đầu tư tiếp.
 
-Chi tiết nghiên cứu, luồng người dùng, thiết kế kỹ thuật, kiểm thử, chi phí và điều kiện phát hành nằm trong [AI_PHASE_2_PLAN.md](AI_PHASE_2_PLAN.md). Trạng thái: chỉ lập kế hoạch, chưa tích hợp provider hoặc gửi dữ liệu người dùng tới AI.
+Kế hoạch điều hành nằm trong [DEVELOPMENT_PRIORITIES.md](DEVELOPMENT_PRIORITIES.md), chi tiết weekly trong [AI_PHASE_2_PLAN.md](AI_PHASE_2_PLAN.md). Tận dụng implementation có sẵn; trạng thái bật provider và hiệu quả beta phải được kiểm chứng riêng. Việc cập nhật roadmap không tự bật/tắt cấu hình môi trường hoặc xác nhận ROI.
 
 ## 17. Giai đoạn sản phẩm 3 — Bạn đồng hành
 

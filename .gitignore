@@ -12,6 +12,7 @@ frontend/*.log
 .vscode/
 .agents/
 .codex/
+work/
 
 # Environment files (keep .env.development in git)
 frontend/.env.local

@@ -16,7 +16,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:safety;DB_CLOSE_DELAY=-1",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        // This suite creates more than the production-wide 120 registrations per minute.
+        // Keep the per-email limit intact; isolate its independent resource tests from shared guards.
+        "app.login-attempt-limit.global-limit=1000",
+        "app.login-attempt-limit.per-client-limit=1000"
 })
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
@@ -25,8 +29,127 @@ class ProductionSafetyTests {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired com.selfforge.discipline.auth.AppUserRepository users;
+    @Autowired com.selfforge.discipline.goal.GoalRepository goals;
     @Autowired com.selfforge.discipline.reward.RewardService rewards;
     @Autowired org.springframework.jdbc.core.JdbcTemplate accountingDb;
+
+    @Test void habitStateHistoryIsOwnedAtomicAndIncludedInPersonalExport() throws Exception {
+        String token = register(UUID.randomUUID() + "@example.com"), other = register(UUID.randomUUID() + "@example.com");
+        long habit = createHabit(token);
+        String path = "/api/habits/" + habit + "/state-history";
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetPerWeek\":3,\"categoryId\":9223372036854775807}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(path).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].kind").value("CREATED"))
+                .andExpect(jsonPath("$.items[0].targetPerWeek").value(5));
+        for (int retry = 0; retry < 2; retry++) mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetPerWeek\":7}"))
+                .andExpect(status().isOk());
+        mvc.perform(delete("/api/habits/" + habit).header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"active\":true}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(path).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(4)).andExpect(jsonPath("$.items[0].active").value(true))
+                .andExpect(jsonPath("$.items[1].active").value(false)).andExpect(jsonPath("$.items[2].targetPerWeek").value(7));
+        mvc.perform(get(path).header("Authorization", "Bearer " + other)).andExpect(status().isNotFound());
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mvc.perform(get(path).param("beforeId", "0").header("Authorization", "Bearer " + token)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/profile/data").header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.habit_state_history.length()").value(4));
+        mvc.perform(get("/api/profile/data").header("Authorization", "Bearer " + other)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.habit_state_history.length()").value(0));
+    }
+
+    @Test void habitStateHistoryCursorStaysStableWhenNewChangesArrive() throws Exception {
+        String token = register(UUID.randomUUID() + "@example.com");
+        long habit = createHabit(token);
+        for (int i = 0; i < 22; i++) mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetPerWeek\":" + (i % 2 == 0 ? 7 : 5) + "}"))
+                .andExpect(status().isOk());
+        String path = "/api/habits/" + habit + "/state-history";
+        var first = json.readTree(mvc.perform(get(path).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(20)).andReturn().getResponse().getContentAsString());
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetPerWeek\":3}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(path).param("beforeId", first.get("nextCursor").asText()).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(3))
+                .andExpect(jsonPath("$.items[2].kind").value("CREATED")).andExpect(jsonPath("$.nextCursor").doesNotExist());
+    }
+
+    @Test void staleHabitEditIsRejectedWithoutOverwritingTheNewerSave() throws Exception {
+        String token = register(UUID.randomUUID() + "@example.com");
+        long habit = createHabit(token);
+        var current = json.readTree(mvc.perform(get("/api/habits").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get(0);
+        var expected = new java.util.LinkedHashMap<String, Object>();
+        expected.put("name", current.get("name").asText());
+        expected.put("description", null);
+        expected.put("difficulty", current.get("difficulty").asText());
+        expected.put("targetPerWeek", current.get("targetPerWeek").asInt());
+        expected.put("points", current.get("points").asInt());
+        expected.put("active", current.get("active").asBoolean());
+        expected.put("categoryId", null);
+        expected.put("tags", null);
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Newer save\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("targetPerWeek", 3, "expected", expected))))
+                .andExpect(status().isConflict());
+        mvc.perform(get("/api/habits").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$[0].name").value("Newer save"))
+                .andExpect(jsonPath("$[0].targetPerWeek").value(5));
+    }
+
+    @Test void weeklyTargetEditPreservesRecordedRestDaysAndPenaltyBasis() throws Exception {
+        String email = UUID.randomUUID() + "@example.com", token = register(email);
+        var user = users.findByEmail(email).orElseThrow();
+        var monday = userTime.today(user).with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).minusWeeks(1);
+        String body = mvc.perform(post("/api/habits").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Schedule snapshot\",\"targetPerWeek\":5}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long habit = json.readTree(body).get("id").asLong();
+        for (int offset = 8; offset >= 0; offset--) {
+            mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                            "habitId", habit, "date", monday.minusDays(offset).toString(),
+                            "status", offset == 1 || offset == 2 ? "SKIPPED" : "COMPLETED"))))
+                    .andExpect(status().isCreated());
+        }
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetPerWeek\":7}"))
+                .andExpect(status().isOk());
+        // Editing an existing day's note must keep its original schedule snapshot.
+        mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "date", monday.minusDays(1).toString(), "status", "SKIPPED", "note", "Still a rest day"))))
+                .andExpect(status().isCreated());
+        for (String editedStatus : List.of("COMPLETED", "SKIPPED")) {
+            mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                            "habitId", habit, "date", monday.minusDays(1).toString(), "status", editedStatus))))
+                    .andExpect(status().isCreated());
+        }
+        mvc.perform(get("/api/dashboard/today").header("Authorization", "Bearer " + token).param("date", monday.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.habits[0].currentStreak").value(7));
+        org.junit.jupiter.api.Assertions.assertEquals(5, accountingDb.queryForObject(
+                "select target_per_week_snapshot from daily_check_in where habit_id=? and check_date=?", Integer.class, habit, monday.minusDays(1)));
+        // New days use the edited target, while the prior seven-day streak still sets the failure penalty.
+        mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "date", monday.plusDays(1).toString(), "status", "FAILED"))))
+                .andExpect(status().isCreated());
+        var failure = accountingDb.queryForMap("select target_per_week_snapshot, failure_points_snapshot, applied_xp from daily_check_in where habit_id=? and check_date=?", habit, monday.plusDays(1));
+        org.junit.jupiter.api.Assertions.assertEquals(7, ((Number) failure.get("target_per_week_snapshot")).intValue());
+        org.junit.jupiter.api.Assertions.assertEquals(20, ((Number) failure.get("failure_points_snapshot")).intValue());
+        org.junit.jupiter.api.Assertions.assertEquals(-20, ((Number) failure.get("applied_xp")).intValue());
+        mvc.perform(get("/api/profile/data").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.check_ins[0].target_per_week_snapshot").value(5));
+    }
 
 
 
@@ -123,6 +246,9 @@ class ProductionSafetyTests {
         checkIn(other, foreignHabit, "COMPLETED", "foreign history");
         long goal = createGoalForQuota(token);
         accountingDb.update("insert into goal_habit_plan(user_id,goal_id,habit_id,request_id) values (?,?,?,?)",userId,goal,habit,UUID.randomUUID().toString());
+        accountingDb.update("insert into ai_coach_usage(user_id,usage_month,feature,request_count) values (?,current_date,'DAILY_FOCUS',1)", userId);
+        accountingDb.update("insert into weekly_coach_advice(user_id,week_start,language,evidence_fingerprint,headline,observations_json,experiments_json,created_at) values (?,current_date,'vi',?,'Private AI advice','[]','[]',CURRENT_TIMESTAMP)", userId, "a".repeat(64));
+        accountingDb.update("insert into goal_coach_plan(user_id,goal_id,language,evidence_fingerprint,headline,steps_json,habits_json,created_at) values (?,?, 'vi',?,'Private goal plan','[]','[]',CURRENT_TIMESTAMP)", userId, goal, "b".repeat(64));
         mvc.perform(post("/api/goals/" + goal + "/progress").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("amount", 1, "requestId", UUID.randomUUID())))).andExpect(status().isOk());
         mvc.perform(post("/api/challenges").header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
@@ -136,6 +262,7 @@ class ProductionSafetyTests {
         accountingDb.update("insert into mood_entry(user_id,mood_date,score) values (?,current_date,3)", userId);
         accountingDb.update("insert into weekly_review(user_id,week_start,rating,wins) values (?,current_date,3,'private')", userId);
         accountingDb.update("insert into custom_reward(user_id,name,xp_cost,claimed) values (?,'Private',10,false)", userId);
+        accountingDb.update("insert into feedback_submission(user_id,feedback_type,summary,steps,expected_result,language,created_at,operator_status,operator_note) values (?,'BUG','Private beta report','Private steps','Private expected','vi',CURRENT_TIMESTAMP,'NEW','')", userId);
         accountingDb.update("insert into password_reset_code(user_id,send_count,attempts,consumed) values (?,0,0,false)", userId);
         accountingDb.update("insert into email_change_code(user_id,pending_email,send_count,attempts,consumed) values (?, ?,0,0,false)", userId, "pending@example.com");
         accountingDb.update("insert into registration_code(email,send_count,attempts,consumed) values (?,0,0,false)", email);
@@ -147,8 +274,8 @@ class ProductionSafetyTests {
                 .content(json.writeValueAsString(Map.of("currentPassword", "password123", "confirmationEmail", email.toUpperCase(java.util.Locale.ROOT)))))
                 .andExpect(status().isNoContent());
         for (String table : java.util.List.of("goal_habit_plan", "restart_plan", "daily_focus_plan", "habit", "category", "goal", "journal_entry", "mood_entry", "weekly_review", "challenge", "reminder",
-                "streak_freeze", "pomodoro_session", "custom_reward", "user_achievement", "user_level", "penalty", "auth_session", "account_security_event", "password_reset_code", "email_change_code",
-                "challenge_create_receipt", "habit_batch_receipt", "goal_create_receipt")) org.junit.jupiter.api.Assertions.assertEquals(0,
+                "streak_freeze", "pomodoro_session", "custom_reward", "feedback_submission", "user_achievement", "user_level", "penalty", "auth_session", "account_security_event", "password_reset_code", "email_change_code",
+                "challenge_create_receipt", "habit_batch_receipt", "goal_create_receipt", "ai_coach_usage", "weekly_coach_advice", "goal_coach_plan")) org.junit.jupiter.api.Assertions.assertEquals(0,
                 accountingDb.queryForObject("select count(*) from " + table + " where user_id = ?", Integer.class, userId));
         mvc.perform(get("/api/restart-plan").header("Authorization", "Bearer " + other)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Private restart"));
         org.junit.jupiter.api.Assertions.assertFalse(users.existsById(userId));
@@ -157,6 +284,8 @@ class ProductionSafetyTests {
         org.junit.jupiter.api.Assertions.assertEquals(0, accountingDb.queryForObject("select count(*) from registration_code where email = ?", Integer.class, email));
         org.junit.jupiter.api.Assertions.assertEquals(sharedCategories, accountingDb.queryForObject("select count(*) from category where user_id is null", Long.class));
         org.junit.jupiter.api.Assertions.assertEquals(sharedAchievements, accountingDb.queryForObject("select count(*) from achievement", Long.class));
+        org.junit.jupiter.api.Assertions.assertEquals(0, accountingDb.queryForObject("select count(*) from habit_state_history where habit_id=?", Integer.class, habit));
+        org.junit.jupiter.api.Assertions.assertEquals(1, accountingDb.queryForObject("select count(*) from habit_state_history where habit_id=?", Integer.class, foreignHabit));
         for (String session : java.util.List.of(token, secondSession)) mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + session)).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/check-ins").header("Authorization", "Bearer " + other)).andExpect(status().isOk()).andExpect(jsonPath("$[0].note").value("foreign history"));
         register(email);
@@ -274,6 +403,11 @@ class ProductionSafetyTests {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("displayName", "  Updated name  ", "motto", ""))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.displayName").value("Updated name"))
                 .andExpect(jsonPath("$.timezone").value("UTC")).andExpect(jsonPath("$.motto").value(""));
+        mvc.perform(patch("/api/profile").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"language\":\"en\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.language").value("en"));
+        mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.language").value("en"));
     }
 
     @Test void invalidProfileUpdatesAreAtomicAndLeaveOtherAccountsUnchanged() throws Exception {
@@ -287,6 +421,7 @@ class ProductionSafetyTests {
                 Map.of("displayName", "   ", "motto", "Must not persist"),
                 Map.of("timezone", "", "displayName", "Must not persist"),
                 Map.of("timezone", "Invalid/Zone", "displayName", "Must not persist"),
+                Map.of("language", "fr"),
                 Map.of("displayName", "x".repeat(101)),
                 Map.of("motto", "x".repeat(256)))) {
             mvc.perform(patch("/api/profile").header("Authorization", "Bearer " + token)
@@ -544,6 +679,8 @@ class ProductionSafetyTests {
         mvc.perform(post("/api/journal").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"win\":\"Private journal\"}"))
                 .andExpect(status().isCreated());
+        long ownerId = users.findByEmail(email).orElseThrow().getId();
+        accountingDb.update("insert into ai_coach_usage(user_id,usage_month,feature,request_count) values (?,current_date,'DAILY_FOCUS',2)", ownerId);
         var result = mvc.perform(get("/api/profile/data").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.profile.email").value(email))
@@ -555,6 +692,9 @@ class ProductionSafetyTests {
                 .andExpect(jsonPath("$.check_ins.length()").value(1))
                 .andExpect(jsonPath("$.check_ins[0].note").value("Owner history"))
                 .andExpect(jsonPath("$.journal_entry[0].win").value("Private journal"))
+                .andExpect(jsonPath("$.ai_coach_usage.length()").value(1))
+                .andExpect(jsonPath("$.ai_coach_usage[0].feature").value("DAILY_FOCUS"))
+                .andExpect(jsonPath("$.ai_coach_usage[0].request_count").value(2))
                 .andExpect(jsonPath("$.check_in_xp_adjustments.length()").value(1)).andReturn();
         String body = result.getResponse().getContentAsString();
         for (String secret : java.util.List.of("FOREIGN_SECRET", "password_hash", "token_hash", "code_hash", token))
@@ -1011,11 +1151,13 @@ class ProductionSafetyTests {
                 java.time.LocalDate.of(2026, 9, 20));
         var upgraded = org.flywaydb.core.Flyway.configure().dataSource(accountingDb.getDataSource())
                 .schemas(schema).defaultSchema(schema).locations("classpath:db/migration/postgresql").load();
-        org.junit.jupiter.api.Assertions.assertEquals(33, upgraded.migrate().migrationsExecuted);
-        var row = accountingDb.queryForMap("select note, applied_xp, points_snapshot from " + schemaSql + ".daily_check_in where id = 1");
+        org.junit.jupiter.api.Assertions.assertEquals(49, upgraded.migrate().migrationsExecuted);
+        var row = accountingDb.queryForMap("select note, applied_xp, points_snapshot, target_per_week_snapshot from " + schemaSql + ".daily_check_in where id = 1");
         org.junit.jupiter.api.Assertions.assertEquals("Keep me", row.get("note"));
         org.junit.jupiter.api.Assertions.assertNull(row.get("applied_xp"));
         org.junit.jupiter.api.Assertions.assertNull(row.get("points_snapshot"));
+        org.junit.jupiter.api.Assertions.assertNull(row.get("target_per_week_snapshot"));
+        org.junit.jupiter.api.Assertions.assertEquals(0, accountingDb.queryForObject("select count(*) from " + schemaSql + ".habit_state_history", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(0, upgraded.migrate().migrationsExecuted);
     }
 
@@ -1383,19 +1525,30 @@ class ProductionSafetyTests {
     }
 
     @Test void inactiveHabitRemindersPauseAndResumeWithoutLosingTheirSchedule() throws Exception {
-        String token = register(UUID.randomUUID() + "@example.com");
+        String email = UUID.randomUUID() + "@example.com";
+        String token = register(email);
         long habit = createHabit(token);
-        var reminderTime = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).minusMinutes(1).withSecond(0).withNano(0);
+        var user = users.findByEmail(email).orElse(null);
+        // The helper account's current date is authoritative; avoid a test that accidentally fails every weekend.
+        if (user == null) throw new AssertionError("Expected registered reminder user");
+        var now = userTime.now(user);
+        String todaySchedule = now.getDayOfWeek().name().substring(0, 3);
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "targetPerWeek", 1, "scheduledDays", todaySchedule))))
+                .andExpect(status().isOk());
+        var reminderTime = now.toLocalTime().withSecond(0).withNano(0);
         mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                    "habitId", habit, "reminderTime", reminderTime.toString(), "daysOfWeek", "MON,TUE,WED,THU,FRI,SAT,SUN", "message", "Keep this schedule"))))
+                    "habitId", habit, "reminderTime", reminderTime.toString(), "daysOfWeek", todaySchedule, "message", "Keep this schedule"))))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.habitActive").value(true));
         mvc.perform(get("/api/reminders/due").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
         mvc.perform(delete("/api/habits/" + habit).header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
         mvc.perform(get("/api/reminders").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].enabled").value(true))
-                .andExpect(jsonPath("$[0].habitActive").value(false)).andExpect(jsonPath("$[0].message").value("Keep this schedule"));
+                .andExpect(jsonPath("$[0].habitActive").value(false)).andExpect(jsonPath("$[0].habitScheduledDays").value(todaySchedule))
+                .andExpect(jsonPath("$[0].message").value("Keep this schedule"));
         mvc.perform(get("/api/reminders/due").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
         mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
@@ -1403,6 +1556,66 @@ class ProductionSafetyTests {
                 .andExpect(status().isOk());
         mvc.perform(get("/api/reminders/due").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].habitActive").value(true));
+    }
+
+    @Test void dueRemindersNeverIgnoreTheHabitSchedule() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        String token = register(email);
+        var user = users.findByEmail(email).orElseThrow();
+        var now = userTime.now(user);
+        String reminderDay = now.getDayOfWeek().name().substring(0, 3);
+        String habitRestDay = now.toLocalDate().plusDays(1).getDayOfWeek().name().substring(0, 3);
+        String created = mvc.perform(post("/api/habits").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "name", "Scheduled rest reminder", "targetPerWeek", 1, "scheduledDays", reminderDay))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long habit = json.readTree(created).get("id").asLong();
+        mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "reminderTime", now.toLocalTime().withSecond(0).withNano(0).toString(),
+                        "daysOfWeek", reminderDay, "message", "Should stay quiet"))))
+                .andExpect(status().isCreated());
+        mvc.perform(patch("/api/habits/" + habit).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "targetPerWeek", 1, "scheduledDays", habitRestDay))))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/reminders/due").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test void reminderWeekdaysMustBelongToTheHabitSchedule() throws Exception {
+        String token = register(UUID.randomUUID() + "@example.com");
+        String created = mvc.perform(post("/api/habits").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "name", "Only Mondays", "targetPerWeek", 1, "scheduledDays", "MON"))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long habit = json.readTree(created).get("id").asLong();
+
+        mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "reminderTime", "09:00", "daysOfWeek", "TUE"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Lịch nhắc chỉ có thể đặt vào ngày thực hiện của thói quen."));
+        mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "reminderTime", "09:00", "daysOfWeek", "MON,MON"))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "reminderTime", "09:00"))))
+                .andExpect(status().isBadRequest());
+
+        String reminder = mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "reminderTime", "09:00", "daysOfWeek", "MON"))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long reminderId = json.readTree(reminder).get("id").asLong();
+        mvc.perform(patch("/api/reminders/" + reminderId).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"daysOfWeek\":\"TUE\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(patch("/api/reminders/" + reminderId).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false));
     }
 
     @Test void profileSnapshotsPreventOverwritingAnotherSessionsChanges() throws Exception {
@@ -1699,6 +1912,20 @@ class ProductionSafetyTests {
         mvc.perform(post("/api/check-ins").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("habitId",habit,"date",today.toString(),"status","SKIPPED")))).andExpect(status().isCreated());
         mvc.perform(get("/api/companion/weekly").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.xp").value(0)).andExpect(jsonPath("$.sources.length()").value(0));
         mvc.perform(get("/api/companion/weekly").param("week",week.plusDays(1).toString()).header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());mvc.perform(get("/api/companion/weekly")).andExpect(status().isUnauthorized());
+    }
+
+    @Test void companionRhythmUsesOwnedRecordedCreditsWithoutCreatingPressureOrProgress() throws Exception {
+        String email=UUID.randomUUID()+"@example.com",token=register(email),other=register(UUID.randomUUID()+"@example.com");var user=users.findByEmail(email).orElseThrow();var today=userTime.today(user);long habit=createHabit(token),foreign=createHabit(other);
+        for(var date:java.util.List.of(today.minusDays(7),today))mvc.perform(post("/api/check-ins").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("habitId",habit,"date",date.toString(),"status","COMPLETED","note","PRIVATE")))).andExpect(status().isCreated());
+        mvc.perform(post("/api/check-ins").header("Authorization","Bearer "+other).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("habitId",foreign,"date",today.toString(),"status","COMPLETED","note","FOREIGN")))).andExpect(status().isCreated());
+        mvc.perform(get("/api/companion/rhythm").header("Authorization","Bearer "+token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.windowStart").value(today.minusDays(27).toString())).andExpect(jsonPath("$.observedThrough").value(today.toString())).andExpect(jsonPath("$.timezone").value(userTime.zone(user).getId()))
+                .andExpect(jsonPath("$.periodDays").value(28)).andExpect(jsonPath("$.periodXp").value(20)).andExpect(jsonPath("$.contributingDays").value(2)).andExpect(jsonPath("$.companionXp").value(20)).andExpect(jsonPath("$.stage").value(1)).andExpect(jsonPath("$.nextThreshold").value(100)).andExpect(jsonPath("$.remainingXp").value(80)).andExpect(jsonPath("$.estimatedReachDate").value(today.plusDays(112).toString()))
+                .andExpect(jsonPath("$.note").doesNotExist()).andExpect(jsonPath("$.habitName").doesNotExist());
+        mvc.perform(post("/api/check-ins").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("habitId",habit,"date",today.minusDays(7).toString(),"status","SKIPPED","note","Corrected")))).andExpect(status().isCreated());
+        mvc.perform(get("/api/companion/rhythm").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.periodXp").value(10)).andExpect(jsonPath("$.contributingDays").value(1)).andExpect(jsonPath("$.companionXp").value(10)).andExpect(jsonPath("$.remainingXp").value(90)).andExpect(jsonPath("$.estimatedReachDate").value(today.plusDays(252).toString()));
+        mvc.perform(get("/api/companion/rhythm").header("Authorization","Bearer "+other)).andExpect(status().isOk()).andExpect(jsonPath("$.periodXp").value(10)).andExpect(jsonPath("$.companionXp").value(10));
+        mvc.perform(get("/api/companion/rhythm")).andExpect(status().isUnauthorized());
     }
 
     @Test void rewardCreationRetrySurvivesEditsAndDeletion() throws Exception {
@@ -2170,6 +2397,13 @@ class ProductionSafetyTests {
     @Test void dailyFocusPlanSyncsAcrossDevicesAndRejectsStaleOrForeignHabits() throws Exception {
         String email=UUID.randomUUID()+"@example.com",token=register(email),other=register(UUID.randomUUID()+"@example.com");
         long owner=users.findByEmail(email).orElseThrow().getId(),first=createHabit(token),second=createHabit(token),foreign=createHabit(other);
+        String todaySchedule=userTime.today(users.findById(owner).orElseThrow()).getDayOfWeek().name().substring(0,3);
+        for(long habitId:java.util.List.of(first,second)) mvc.perform(patch("/api/habits/"+habitId).header("Authorization","Bearer "+token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("targetPerWeek",1,"scheduledDays",todaySchedule))))
+                .andExpect(status().isOk());
+        mvc.perform(patch("/api/habits/"+foreign).header("Authorization","Bearer "+other)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("targetPerWeek",1,"scheduledDays",todaySchedule))))
+                .andExpect(status().isOk());
         var body=new java.util.HashMap<String,Object>(Map.of("budget",90,"energy","MEDIUM","habitIds",java.util.List.of(first,second),"expectedVersion",0));
         for(int i=0;i<2;i++)mvc.perform(put("/api/daily-focus-plans").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.habitIds[0]").value(first));
         mvc.perform(get("/api/daily-focus-plans").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.budget").value(90)).andExpect(jsonPath("$.energy").value("MEDIUM"));
@@ -2184,6 +2418,22 @@ class ProductionSafetyTests {
         mvc.perform(delete("/api/profile/account").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("currentPassword","password123","confirmationEmail",email)))).andExpect(status().isNoContent());
         org.junit.jupiter.api.Assertions.assertEquals(0,accountingDb.queryForObject("select count(*) from daily_focus_plan where user_id=?",Integer.class,owner));
         mvc.perform(get("/api/daily-focus-plans").header("Authorization","Bearer "+other)).andExpect(jsonPath("$.habitIds[0]").value(foreign));
+    }
+
+    @Test void dailyFocusPlanRejectsScheduledRestHabit() throws Exception {
+        String email=UUID.randomUUID()+"@example.com",token=register(email);
+        long owner=users.findByEmail(email).orElseThrow().getId(),habit=createHabit(token);
+        var today=userTime.today(users.findById(owner).orElseThrow());
+        String restSchedule=java.util.Arrays.stream(java.time.DayOfWeek.values())
+                .filter(day->day!=today.getDayOfWeek()).limit(5)
+                .map(day->day.name().substring(0,3)).collect(java.util.stream.Collectors.joining(","));
+        mvc.perform(patch("/api/habits/"+habit).header("Authorization","Bearer "+token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("targetPerWeek",5,"scheduledDays",restSchedule))))
+                .andExpect(status().isOk());
+        var body=Map.of("budget",60,"energy","MEDIUM","habitIds",java.util.List.of(habit),"expectedVersion",0);
+        mvc.perform(put("/api/daily-focus-plans").header("Authorization","Bearer "+token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)))
+                .andExpect(status().isConflict());
     }
 
     @Test void weeklyActionPlanPersistsAndHandlesRetriesCompletionAndStaleEdits() throws Exception {
@@ -2925,14 +3175,121 @@ class ProductionSafetyTests {
         mvc.perform(post("/api/check-ins/new").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(payload))).andExpect(status().isUnauthorized());
     }
 
+    @Test void batchCompletionIsAtomicOwnedAndSafeToRetry() throws Exception {
+        String email = UUID.randomUUID() + "@example.com", token = register(email), other = register(UUID.randomUUID() + "@example.com");
+        var user = users.findByEmail(email).orElseThrow();
+        var today = userTime.today(user);
+        long first = createHabit(token), second = createHabit(token), foreign = createHabit(other);
+        var request = Map.of("date", today.toString(), "habitIds", List.of(first, second));
+
+        mvc.perform(post("/api/check-ins/batch-complete").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.createdCount").value(2))
+                .andExpect(jsonPath("$.entries.length()").value(2)).andExpect(jsonPath("$.entries[0].status").value("COMPLETED"));
+        int balance = rewards.getUserProgress(user).totalXp();
+
+        // A retry leaves an individually-added note intact and cannot grant XP twice.
+        checkIn(token, first, "COMPLETED", "Keep this note");
+        mvc.perform(post("/api/check-ins/batch-complete").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.createdCount").value(0))
+                .andExpect(jsonPath("$.entries[0].note").value("Keep this note"));
+        org.junit.jupiter.api.Assertions.assertEquals(balance, rewards.getUserProgress(user).totalXp());
+
+        long alreadySkipped = createHabit(token), untouched = createHabit(token);
+        checkIn(token, alreadySkipped, "SKIPPED", "Saved elsewhere");
+        var staleGroup = Map.of("date", today.toString(), "habitIds", List.of(alreadySkipped, untouched));
+        mvc.perform(post("/api/check-ins/batch-complete").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(staleGroup)))
+                .andExpect(status().isConflict());
+        org.junit.jupiter.api.Assertions.assertEquals(0, accountingDb.queryForObject(
+                "select count(*) from daily_check_in where habit_id=? and check_date=?", Integer.class, untouched, java.sql.Date.valueOf(today)));
+
+        mvc.perform(post("/api/check-ins/batch-complete").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("date", today.toString(), "habitIds", List.of(foreign)))))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/check-ins/batch-complete").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("date", today.toString(), "habitIds", List.of(first, first)))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/check-ins/batch-complete").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("date", today.minusDays(1).toString(), "habitIds", List.of(first)))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/check-ins/batch-complete").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
     @Test void habitPauseGroupsAreOwnedAtomicRetryableAndPreserveRecordedXp() throws Exception {
         String email=UUID.randomUUID()+"@example.com",token=register(email),other=register(UUID.randomUUID()+"@example.com");var user=users.findByEmail(email).orElseThrow();long first=createHabit(token),second=createHabit(token),foreign=createHabit(other);checkIn(token,first,"COMPLETED","Keep history");int balance=rewards.getUserProgress(user).totalXp();
         var active=json.readTree(mvc.perform(get("/api/habits").header("Authorization","Bearer "+token)).andReturn().getResponse().getContentAsString());var items=new java.util.ArrayList<Map<String,Object>>();for(var row:active)items.add(Map.of("habitId",row.get("id").asLong(),"name",row.get("name").asText(),"difficulty",row.get("difficulty").asText(),"targetPerWeek",row.get("targetPerWeek").asInt()));
         var mixed=new java.util.ArrayList<Map<String,Object>>(items);mixed.add(Map.of("habitId",foreign,"name","Foreign","difficulty","EASY","targetPerWeek",7));mvc.perform(patch("/api/habits/pause-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",mixed)))).andExpect(status().isNotFound());
         var stale=new java.util.ArrayList<Map<String,Object>>(items);var changed=new java.util.HashMap<String,Object>(stale.get(1));changed.put("name","Stale name");stale.set(1,changed);mvc.perform(patch("/api/habits/pause-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",stale)))).andExpect(status().isConflict());mvc.perform(get("/api/habits").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.length()").value(2));
+        org.junit.jupiter.api.Assertions.assertEquals(2, accountingDb.queryForObject("select count(*) from habit_state_history where habit_id in (?,?)", Integer.class, first, second));
         for(int retry=0;retry<2;retry++)mvc.perform(patch("/api/habits/pause-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",items)))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2)).andExpect(jsonPath("$[0].active").value(false)).andExpect(jsonPath("$[1].active").value(false));
+        org.junit.jupiter.api.Assertions.assertEquals(4, accountingDb.queryForObject("select count(*) from habit_state_history where habit_id in (?,?)", Integer.class, first, second));
         mvc.perform(get("/api/habits").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.length()").value(0));mvc.perform(get("/api/check-ins").header("Authorization","Bearer "+token)).andExpect(jsonPath("$[0].note").value("Keep history"));org.junit.jupiter.api.Assertions.assertEquals(balance,rewards.getUserProgress(user).totalXp());
         mvc.perform(patch("/api/habits/pause-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",List.of(items.getFirst(),items.getFirst()))))).andExpect(status().isBadRequest());mvc.perform(patch("/api/habits/pause-batch").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",items)))).andExpect(status().isUnauthorized());
+    }
+
+    @Test void pausedHabitRejectsNewActivityButKeepsExistingRecordsCorrectable() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        String token = register(email);
+        var user = users.findByEmail(email).orElseThrow();
+        long habit = createHabit(token);
+        var today = userTime.today(user);
+        checkIn(token, habit, "COMPLETED", "Recorded before pause");
+        // Use a larger quota so the later rejection proves the paused-habit
+        // guard, rather than merely the monthly free-tier quota.
+        user.activatePremium(com.selfforge.discipline.auth.PremiumTier.LIFETIME, null);
+        users.save(user);
+        mvc.perform(post("/api/streak-freeze").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "date", today.toString()))))
+                .andExpect(status().isCreated());
+        int xpBeforePause = rewards.getUserProgress(user).totalXp();
+
+        mvc.perform(delete("/api/habits/" + habit).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        // A stale client must not create fresh progress for a paused habit.
+        mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "date", today.minusDays(1).toString(),
+                                "status", "COMPLETED", "note", "New after pause"))))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/pomodoro/start").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "durationMinutes", 25,
+                                "requestId", UUID.randomUUID().toString()))))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/reminders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "reminderTime", "09:30",
+                                "daysOfWeek", "MON", "message", "New after pause"))))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/challenges").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "name", "New after pause",
+                                "targetDays", 1, "requestId", UUID.randomUUID().toString()))))
+                .andExpect(status().isConflict());
+        // An already-recorded freeze can be retried after a pause without
+        // charging the account again, but a new date must be rejected.
+        mvc.perform(post("/api/streak-freeze").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "date", today.toString()))))
+                .andExpect(status().isCreated());
+        mvc.perform(post("/api/streak-freeze").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "date", today.minusDays(1).toString()))))
+                .andExpect(status().isConflict());
+        org.junit.jupiter.api.Assertions.assertEquals(xpBeforePause, rewards.getUserProgress(user).totalXp());
+
+        // A pause is not data loss: existing evidence can still receive a correction.
+        mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("habitId", habit, "date", today.toString(),
+                                "status", "COMPLETED", "note", "Corrected after pause"))))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.note").value("Corrected after pause"));
+        org.junit.jupiter.api.Assertions.assertEquals(xpBeforePause, rewards.getUserProgress(user).totalXp());
     }
 
     @Test void habitActivationGroupsRespectCapacityAtomicallyAndAllowSafeRetries() throws Exception {
@@ -2943,7 +3300,9 @@ class ProductionSafetyTests {
         mvc.perform(patch("/api/habits/activate-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",items)))).andExpect(status().isConflict());
         mvc.perform(get("/api/habits").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.length()").value(com.selfforge.discipline.auth.PremiumController.FREE_MAX_HABITS-1));mvc.perform(get("/api/habits/inactive").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.length()").value(3));
         mvc.perform(delete("/api/habits/"+activeIds.get(1)).header("Authorization","Bearer "+token)).andExpect(status().isNoContent());
+        org.junit.jupiter.api.Assertions.assertEquals(4, accountingDb.queryForObject("select count(*) from habit_state_history where habit_id in (?,?)", Integer.class, first, second));
         for(int retry=0;retry<2;retry++)mvc.perform(patch("/api/habits/activate-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",items)))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2)).andExpect(jsonPath("$[0].active").value(true)).andExpect(jsonPath("$[1].active").value(true));
+        org.junit.jupiter.api.Assertions.assertEquals(6, accountingDb.queryForObject("select count(*) from habit_state_history where habit_id in (?,?)", Integer.class, first, second));
         mvc.perform(get("/api/habits").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.length()").value(com.selfforge.discipline.auth.PremiumController.FREE_MAX_HABITS));
         var mixed=new java.util.ArrayList<Map<String,Object>>(items);mixed.add(Map.of("habitId",foreign,"name","Foreign","difficulty","EASY","targetPerWeek",7));mvc.perform(patch("/api/habits/activate-batch").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",mixed)))).andExpect(status().isNotFound());mvc.perform(patch("/api/habits/activate-batch").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items",items)))).andExpect(status().isUnauthorized());
     }
@@ -2965,6 +3324,34 @@ class ProductionSafetyTests {
         mvc.perform(delete("/api/profile/account").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("currentPassword","password123","confirmationEmail",email)))).andExpect(status().isNoContent());org.junit.jupiter.api.Assertions.assertEquals(0,accountingDb.queryForObject("select count(*) from restart_archive where user_id=?",Integer.class,owner.getId()));
     }
 
+    @Test void betaFeedbackIsExplicitOwnedExportableAndBounded() throws Exception {
+        String email=UUID.randomUUID()+"@example.com",token=register(email),other=register(UUID.randomUUID()+"@example.com");
+        Map<String,Object> report=Map.of("type","BUG","summary","Button did not save","steps","Open Help then submit a report","expected","A clear confirmation","language","en");
+        mvc.perform(get("/api/feedback")).andExpect(status().isUnauthorized());
+        String created=mvc.perform(post("/api/feedback").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(report)))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.type").value("BUG")).andExpect(jsonPath("$.summary").value("Button did not save"))
+                .andExpect(jsonPath("$.createdAt").exists()).andReturn().getResponse().getContentAsString();
+        long ownId=json.readTree(created).get("id").asLong();
+        String foreignBody=mvc.perform(post("/api/feedback").header("Authorization","Bearer "+other).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("type","IDEA","summary","Private foreign idea","steps","Private steps","expected","Private expected","language","vi"))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long foreignId=json.readTree(foreignBody).get("id").asLong();
+        mvc.perform(get("/api/feedback").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(ownId)).andExpect(jsonPath("$[0].summary").value("Button did not save"));
+        mvc.perform(delete("/api/feedback/"+foreignId).header("Authorization","Bearer "+token)).andExpect(status().isNotFound());
+        mvc.perform(post("/api/feedback").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"type\":\"INVALID\",\"summary\":\"bad\",\"language\":\"vi\"}")).andExpect(status().isBadRequest());
+        for(int index=0;index<4;index++)mvc.perform(post("/api/feedback").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("type","OTHER","summary","Extra report "+index,"steps","","expected","","language","vi")))).andExpect(status().isCreated());
+        mvc.perform(post("/api/feedback").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("type","OTHER","summary","Too many","steps","","expected","","language","vi"))))
+                .andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After","3600"));
+        mvc.perform(get("/api/profile/data").header("Authorization","Bearer "+token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.feedback_submission.length()").value(5)).andExpect(jsonPath("$.feedback_submission[0].summary").value("Button did not save"));
+        mvc.perform(delete("/api/feedback/"+ownId).header("Authorization","Bearer "+token)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/feedback").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.length()").value(4));
+    }
+
     @Test void weeklyCoachRequiresConsentAndSendsNothingWhileProviderIsDisabled() throws Exception {
         String email=UUID.randomUUID()+"@example.com",token=register(email);var today=userTime.today(users.findByEmail(email).orElseThrow());var week=today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
         mvc.perform(get("/api/coach/weekly/status").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false)).andExpect(jsonPath("$.journalsIncluded").value(false)).andExpect(jsonPath("$.limit").value(4)).andExpect(jsonPath("$.remaining").value(4));
@@ -2973,12 +3360,48 @@ class ProductionSafetyTests {
         mvc.perform(get("/api/coach/weekly/status")).andExpect(status().isUnauthorized());
     }
 
+    @Test void dailyFocusCoachRequiresConsentAndKeepsProviderDisabledByDefault() throws Exception {
+        String token=register(UUID.randomUUID()+"@example.com");long habit=createHabit(token);
+        mvc.perform(get("/api/coach/daily-focus/status").header("Authorization","Bearer "+token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false)).andExpect(jsonPath("$.limit").value(3)).andExpect(jsonPath("$.remaining").value(3));
+        mvc.perform(post("/api/coach/daily-focus").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("budget",60,"energy","MEDIUM","habitIds",List.of(habit),"consent",false,"language","vi")))).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/coach/daily-focus").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("budget",60,"energy","MEDIUM","habitIds",List.of(habit),"consent",true,"language","vi")))).andExpect(status().isServiceUnavailable());
+        mvc.perform(get("/api/coach/daily-focus/status")).andExpect(status().isUnauthorized());
+    }
+
+    @Test void habitCoachRequiresConsentAndKeepsProviderDisabledByDefault() throws Exception {
+        String token=register(UUID.randomUUID()+"@example.com");long habit=createHabit(token);
+        mvc.perform(get("/api/coach/habit/status").header("Authorization","Bearer "+token)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false)).andExpect(jsonPath("$.limit").value(3)).andExpect(jsonPath("$.remaining").value(3));
+        mvc.perform(post("/api/coach/habit").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("question","Why do I miss this?","habitId",habit,"consent",false,"language","en")))).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/coach/habit").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("question","Why do I miss this?","habitId",habit,"consent",true,"language","en")))).andExpect(status().isServiceUnavailable());
+        mvc.perform(get("/api/coach/habit/status")).andExpect(status().isUnauthorized());
+    }
+
     @Test void goalCoachRequiresConsentAndSendsNothingWhileProviderIsDisabled() throws Exception {
         String token=register(UUID.randomUUID()+"@example.com");long goalId=createGoalForQuota(token);
         mvc.perform(get("/api/coach/goals/"+goalId+"/status").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false)).andExpect(jsonPath("$.limit").value(3)).andExpect(jsonPath("$.remaining").value(3));
         mvc.perform(post("/api/coach/goals/"+goalId).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("consent",false,"language","vi")))).andExpect(status().isBadRequest());
         mvc.perform(post("/api/coach/goals/"+goalId).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("consent",true,"language","vi")))).andExpect(status().isServiceUnavailable());
         mvc.perform(get("/api/coach/goals/"+goalId+"/status")).andExpect(status().isUnauthorized());
+    }
+
+    @Test void savedGoalCoachPlanIsScopedToCurrentGoalStateAndCanBeDeletedWithoutAnAiProvider() throws Exception {
+        String email=UUID.randomUUID()+"@example.com",token=register(email),other=register(UUID.randomUUID()+"@example.com");long goalId=createGoalForQuota(token);
+        var user=users.findByEmail(email).orElseThrow();var goal=goals.findById(goalId).orElseThrow();
+        accountingDb.update("insert into goal_coach_plan(user_id,goal_id,language,evidence_fingerprint,headline,steps_json,habits_json,created_at) values (?,?, 'vi', ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                user.getId(),goalId,com.selfforge.discipline.coach.GoalCoachPlanStore.fingerprint(goal),"Bước đầu nhỏ","[\"Đọc một trang\"]","[{\"name\":\"Đọc sau bữa sáng\",\"description\":\"Một trang là đủ\",\"difficulty\":\"EASY\",\"targetPerWeek\":3}]");
+        mvc.perform(get("/api/coach/goals/"+goalId+"/advice").param("language","vi").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.headline").value("Bước đầu nhỏ"));
+        mvc.perform(post("/api/coach/goals/"+goalId).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{\"consent\":true,\"language\":\"vi\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.headline").value("Bước đầu nhỏ"));
+        mvc.perform(get("/api/coach/goals/"+goalId+"/status").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.remaining").value(3));
+        mvc.perform(get("/api/coach/goals/"+goalId+"/advice").param("language","vi").header("Authorization","Bearer "+other)).andExpect(status().isNotFound());
+        mvc.perform(delete("/api/coach/goals/"+goalId+"/advice").param("language","vi").header("Authorization","Bearer "+token)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/coach/goals/"+goalId+"/advice").param("language","vi").header("Authorization","Bearer "+token)).andExpect(status().isNoContent());
     }
 
     @Test void restartCoachRequiresConsentAndSendsNothingWhileProviderIsDisabled() throws Exception {
@@ -3043,5 +3466,52 @@ class ProductionSafetyTests {
         mvc.perform(get("/api/export/csv").header("Authorization", "Bearer " + token))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "300"));
+    }
+
+    @Test void checkInRejectedForDateOlderThan90Days() throws Exception {
+        String token = register(UUID.randomUUID() + "@example.com");
+        long habit = createHabit(token);
+        var user = users.findByEmail(json.readTree(mvc.perform(get("/api/auth/me")
+                .header("Authorization", "Bearer " + token)).andReturn().getResponse().getContentAsString())
+                .get("email").asText()).orElseThrow();
+        var today = userTime.today(user);
+
+        // 90 days ago: still allowed
+        mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "status", "COMPLETED",
+                        "date", today.minusDays(90).toString()))))
+                .andExpect(status().isCreated());
+
+        // 91 days ago: rejected
+        mvc.perform(post("/api/check-ins").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                        "habitId", habit, "status", "COMPLETED",
+                        "date", today.minusDays(91).toString()))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test void registerIsRateLimitedAfterTooManyAttempts() throws Exception {
+        String email = "ratelimit-register-" + UUID.randomUUID() + "@example.com";
+        // First registration succeeds
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                        "email", email, "displayName", "Tester",
+                        "password", "password123", "termsAccepted", true))))
+                .andExpect(status().isCreated());
+        // Spam the same email until rate limited (limit is 10/min)
+        int tooManyRequests = 0;
+        for (int i = 0; i < 12; i++) {
+            int status = mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of(
+                            "email", email, "displayName", "Spammer",
+                            "password", "password123", "termsAccepted", true))))
+                    .andReturn().getResponse().getStatus();
+            if (status == 429) tooManyRequests++;
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(tooManyRequests > 0,
+                "Register endpoint must be rate-limited after repeated attempts with the same email");
     }
 }

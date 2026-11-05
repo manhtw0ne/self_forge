@@ -13,8 +13,12 @@ public class SpaController {
     @GetMapping(value = {
             "/",
             "/login",
+            "/privacy",
+            "/terms",
+            "/email-change-recovery",
             "/habits",
             "/journal",
+            "/check-in-history",
             "/stats",
             "/challenges",
             "/rewards",
@@ -22,6 +26,9 @@ public class SpaController {
             "/review",
             "/goals",
             "/reminders",
+            "/companion",
+            "/coach",
+            "/help",
             "/profile",
             "/premium"
     })

@@ -1,0 +1,6 @@
+export function readClaimReward(value,id){
+ if(!value||value.id!==id||!Number.isSafeInteger(id)||id<1||typeof value.name!=='string'||!value.name.trim()||value.name.length>255||value.description!=null&&(typeof value.description!=='string'||value.description.length>255)||!Number.isInteger(value.xpCost)||value.xpCost<1||value.xpCost>1000000||typeof value.claimed!=='boolean')throw Error('Invalid claim reward');
+ return {id,name:value.name,description:value.description??'',xpCost:value.xpCost,claimed:value.claimed};
+}
+export function rewardClaimReview(value,id,progress){const reward=readClaimReward(value,id);if(!Number.isSafeInteger(progress?.totalXp)||progress.totalXp<0)throw Error('Invalid XP balance');return {reward,xp:progress.totalXp,remaining:progress.totalXp-reward.xpCost,canClaim:!reward.claimed&&progress.totalXp>=reward.xpCost};}
+export function rewardClaimPayload(review){const reward=readClaimReward(review?.reward,review?.reward?.id);if(reward.claimed||!review.canClaim||!Number.isSafeInteger(review.xp)||review.xp<reward.xpCost)throw Error('Reward cannot be claimed');return {expectedXpCost:reward.xpCost,expected:{name:reward.name,description:reward.description,xpCost:reward.xpCost}};}

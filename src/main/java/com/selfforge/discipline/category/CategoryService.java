@@ -31,20 +31,26 @@ public class CategoryService {
     }
 
     public CategoryResponse create(AppUser user, CreateCategoryRequest request) {
-        Category category = new Category(
-                request.name(),
-                request.color(),
-                request.icon(),
-                user
-        );
-        return CategoryResponse.from(categoryRepository.save(category));
+        users.lockById(user.getId()).orElseThrow();
+        String name=request.name().trim(),color=request.color()==null?"":request.color(),icon=request.icon()==null?"":request.icon().trim();
+        var existing=categoryRepository.findFirstByUserIdAndNameAndColorAndIcon(user.getId(),name,color,icon);
+        if(existing.isPresent())return CategoryResponse.from(existing.get());
+        return CategoryResponse.from(categoryRepository.save(new Category(name,color,icon,user)));
     }
 
     public CategoryResponse update(AppUser user, Long id, UpdateCategoryRequest request) {
+        users.lockById(user.getId()).orElseThrow();
         Category category = getCategory(user, id);
         if (category.isSystemDefault()) throw new IllegalArgumentException("Cannot edit a system default category");
-        category.update(request.name(), request.color(), request.icon());
+        String name=request.name()==null||request.name().isBlank()?category.getName():request.name().trim();
+        String color=request.color()==null?category.getColor():request.color(),icon=request.icon()==null?category.getIcon():request.icon().trim();
+        if(matches(category,name,color,icon))return CategoryResponse.from(category);
+        if(request.expected()!=null&&!matches(category,request.expected().name(),request.expected().color(),request.expected().icon()))throw new IllegalStateException("Danh mục đã thay đổi. Tải lại danh sách và kiểm tra trước khi sửa tiếp.");
+        category.update(name,color,icon);
         return CategoryResponse.from(category);
+    }
+    private boolean matches(Category category,String name,String color,String icon){
+        return java.util.Objects.equals(category.getName(),name)&&java.util.Objects.equals(category.getColor(),color)&&java.util.Objects.equals(category.getIcon(),icon);
     }
 
     public void delete(AppUser user, Long id) {

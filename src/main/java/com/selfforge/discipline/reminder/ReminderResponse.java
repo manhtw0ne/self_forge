@@ -11,6 +11,8 @@ public record ReminderResponse(
         String daysOfWeek,
         String message,
         boolean enabled,
+        boolean habitActive,
+        String habitScheduledDays,
         Instant createdAt
 ) {
     public static ReminderResponse from(Reminder reminder) {
@@ -22,6 +24,8 @@ public record ReminderResponse(
                 reminder.getDaysOfWeek(),
                 reminder.getMessage(),
                 reminder.isEnabled(),
+                reminder.getHabit().isActive(),
+                reminder.getHabit().getScheduledDays(),
                 reminder.getCreatedAt()
         );
     }

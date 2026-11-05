@@ -20,7 +20,10 @@ public record DashboardResponse(
             Difficulty difficulty,
             int points,
             int targetPerWeek,
+            String scheduledDays,
+            boolean scheduledToday,
             int completedThisWeek,
+            int recordedSetbacksThisWeek,
             int currentStreak,
             CheckInStatus todayStatus
     ) {

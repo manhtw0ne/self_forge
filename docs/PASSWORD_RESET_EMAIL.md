@@ -15,6 +15,17 @@ Ngày: 26/09/2026. Chức năng mặc định tắt. Không cần thay cấu hì
 | SPRING_MAIL_USERNAME | Tài khoản SMTP |
 | SPRING_MAIL_PASSWORD | Secret SMTP hoặc app password |
 
+Hoặc dùng **Resend** (không cần các biến `SPRING_MAIL_*`):
+
+| Biến | Giá trị |
+| --- | --- |
+| EMAIL_PROVIDER | `resend` |
+| RESEND_API_KEY | API key Resend, lưu trong secret manager |
+| PASSWORD_RESET_ENABLED | `true` |
+| PASSWORD_RESET_FROM | Địa chỉ/domain đã được Resend xác minh |
+
+`EMAIL_PROVIDER` chỉ nhận `smtp` (mặc định) hoặc `resend`, không phân biệt hoa/thường. Cấu hình sai làm backend dừng ngay thay vì âm thầm tắt gửi OTP. Với Resend, backend gọi HTTPS có timeout; API key chỉ ở server và không gửi xuống trình duyệt.
+
 Ứng dụng bật SMTP auth, STARTTLS bắt buộc và timeout kết nối/đọc/ghi 5 giây. Nếu nhà cung cấp dùng SSL 465 cần cấu hình transport phù hợp, không tắt TLS để né lỗi. Không bật mail debug vì có thể lộ dữ liệu email.
 
 GET /api/auth/password-reset/availability chỉ cho biết tính năng đã bật và có cấu hình sender, không kiểm tra kết nối hay cam kết email đến hộp thư. Chỉ khi enabled=true thì trang đăng nhập mới hiện Quên mật khẩu.
@@ -42,8 +53,8 @@ Không cần cung cấp secret cho trợ lý. Nếu có lỗi, chia sẻ thông 
 ## Giới hạn trước public
 
 - Chưa nghiệm thu gửi email thật hoặc E2E trình duyệt.
-- Throttling hiện theo tài khoản, chưa có rate limit tổng/IP ở ứng dụng; cấu hình giới hạn ở ingress trước khi bật public.
-- Phản hồi không tiết lộ tài khoản qua nội dung/status, nhưng chưa làm đồng đều thời gian phản hồi.
+- Ứng dụng giới hạn gửi theo email, tổng hệ thống và mạng/thiết bị; scope mạng chỉ lưu SHA-256, không lưu IP thô. Khi chạy sau reverse proxy, chỉ bật `TRUST_FORWARDED_CLIENT_ADDRESS=true` nếu proxy đã loại header giả mạo từ client. Giới hạn tại ingress vẫn nên giữ khi mở rộng public.
+- Phản hồi không tiết lộ tài khoản qua nội dung/status. Luồng đăng nhập và xác nhận reset với email/mã không tồn tại đều thực hiện PBKDF2 trước khi trả lỗi chung để giảm tín hiệu timing; đây không thay thế rate limit hay giám sát abuse.
 - Chưa áp dụng OTP cho đăng ký hoặc đổi mật khẩu trong hồ sơ; hai luồng đó vẫn theo hành vi hiện có. Đổi mật khẩu hồ sơ hủy OTP reset đang chờ.
 - Hạn mức/bộ đếm bị mất nếu xóa bảng local; không xóa dữ liệu OTP thủ công để vượt giới hạn.
 - Database V4 cần áp dụng trước khi chạy backend mới; giữ V1–V3 nguyên vẹn.

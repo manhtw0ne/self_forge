@@ -1,5 +1,5 @@
 import { useLanguage } from '../context/useLanguage';
-import { usePremium } from '../context/PremiumContext';
+import { usePremium } from '../context/usePremium';
 
 const FREE_FEATURES = [
   { name: 'Thói quen', desc: 'Tối đa 10 thói quen đang bật' },
@@ -13,13 +13,13 @@ const FREE_FEATURES = [
   { name: 'Mục tiêu', desc: 'Tối đa 3 mục tiêu đang thực hiện' },
   { name: 'Mood', desc: 'Toàn bộ lịch sử' },
   { name: 'Streak Freeze', desc: '1 lần/tháng' },
+  { name: 'Weekly Review', desc: 'Đánh giá tuần', beta: true },
 ];
 
 const PREMIUM_FEATURES = [
   { name: 'Thói quen', desc: 'Không giới hạn', highlight: true },
   { name: 'Mục tiêu', desc: 'Không giới hạn', highlight: true },
   { name: 'Streak Freeze', desc: '5 lần/tháng', highlight: true },
-  { name: 'Weekly Review', desc: 'Đánh giá tuần', highlight: true },
   { name: 'Phần thưởng', desc: 'Tự tạo phần thưởng', highlight: true },
   { name: 'Export CSV', desc: 'Xuất dữ liệu', highlight: true },
 ];
@@ -50,7 +50,7 @@ const PLANS = [
 
 export default function PremiumPage() {
   const { t, language } = useLanguage();
-  const { isPremium, premiumTier, premiumExpiresAt } = usePremium();
+  const { isPremium, premiumTier, premiumExpiresAt, loading, error, refreshPremium } = usePremium();
 
   if (isPremium) {
     return (
@@ -69,6 +69,9 @@ export default function PremiumPage() {
           <p className="premium-active-desc">
             {t("Bạn đang sử dụng toàn bộ tính năng nâng cao. Cảm ơn bạn đã ủng hộ SelfForge!")}
           </p>
+          <button type="button" className="btn btn-secondary" onClick={() => void refreshPremium()} disabled={loading}>
+            {t(loading ? 'Đang tải lại trạng thái...' : 'Tải lại trạng thái Premium')}
+          </button>
         </div>
       </div>
     );
@@ -86,6 +89,10 @@ export default function PremiumPage() {
       <div className="card" role="note" style={{ marginBottom: '1.5rem' }}>
         <strong>{t('Premium chưa mở bán')}</strong>
         <p>{t('Giá bên dưới là dự kiến bằng VND. Thanh toán và tự động kích hoạt chưa khả dụng; bạn chưa cần chuyển khoản.')}</p>
+        {error && <p role="alert">{t('Chưa tải được trạng thái Premium mới nhất. Các tính năng nâng cao sẽ vẫn khóa cho đến khi kết nối lại.')}</p>}
+        <button type="button" className="btn btn-secondary" onClick={() => void refreshPremium()} disabled={loading}>
+          {t(loading ? 'Đang tải lại trạng thái...' : 'Tải lại trạng thái Premium')}
+        </button>
       </div>
       {/* Pricing cards */}
       <div className="premium-plans">
@@ -121,7 +128,7 @@ export default function PremiumPage() {
 
                   <div>
                     <strong>{t(f.name)}</strong>
-                    <span>{t(f.desc)}</span>
+                    <span>{f.beta ? (language === 'en' ? 'Available free during public beta' : 'Mở miễn phí trong beta công khai') : t(f.desc)}</span>
                   </div>
                 </li>
               ))}

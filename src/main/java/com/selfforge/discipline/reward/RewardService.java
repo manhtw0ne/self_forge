@@ -86,7 +86,7 @@ public class RewardService {
         // Check streak-based achievements for each habit
         List<Habit> habits = habitRepository.findByUserIdAndActiveTrueOrderByCreatedAtAsc(user.getId());
         for (Habit habit : habits) {
-            int streak = streakService.current(user.getId(), habit.getId(), today);
+            int streak = streakService.current(user.getId(), habit.getId(), today, habit.getTargetPerWeek());
             if (streak >= 7) {
                 grantIfNew(user, "STREAK_7");
             }

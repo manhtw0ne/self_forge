@@ -1,0 +1,38 @@
+import {usePremium} from '../context/usePremium';
+import {useEffect,useRef,useState} from 'react';
+import {Link,useLocation} from 'react-router-dom';
+import ModalOverlay from './ModalOverlay';
+import api from '../api/client';
+import {useLanguage} from '../context/useLanguage';
+import {quickSearchSource,quickSearchResults,quickSearchNextIndex} from '../utils/quickSearch';
+const endpoints={active:'/habits',inactive:'/habits/inactive',goals:'/goals',challenges:'/challenges',rewards:'/custom-rewards'};
+export default function QuickSearch({disabled}){
+ const {isPremium}=usePremium();
+ const {language}=useLanguage(),en=language==='en',location=useLocation();
+ const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[type,setType]=useState('ALL'),[sources,setSources]=useState({}),[errors,setErrors]=useState([]),[loading,setLoading]=useState(false),[attempt,setAttempt]=useState(0),[limit,setLimit]=useState(12);
+ const dialog=useRef(null),input=useRef(null);
+ useEffect(()=>{setOpen(false);setQuery('');setType('ALL');setSources({});},[location.key]);
+ useEffect(()=>{const keyboard=e=>{if(!disabled&&(e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==='k'&&!document.querySelector('[role="dialog"]')){e.preventDefault();setOpen(true);}};document.addEventListener('keydown',keyboard);return()=>document.removeEventListener('keydown',keyboard);},[disabled]);
+ useEffect(()=>{if(!open)return;let active=true;setSources({});setErrors([]);setLoading(true);
+  const entries=Object.entries(endpoints).filter(([kind])=>kind!=='rewards'||isPremium);
+  Promise.allSettled(entries.map(async([kind,path])=>{const {data}=await api.get(path);return {kind,rows:quickSearchSource(data,kind)};})).then(results=>{if(!active)return;const next={},failed=[];results.forEach((result,index)=>{if(result.status==='fulfilled')next[result.value.kind]=result.value.rows;else failed.push(entries[index][0]);});setSources(next);setErrors(failed);setLoading(false);});return()=>{active=false;};
+ },[open,attempt,isPremium]);
+ const effectiveType=type==='REWARDS'&&!isPremium?'ALL':type,result=quickSearchResults(sources,query,en,effectiveType);
+ const close=()=>{setOpen(false);setQuery('');setType('ALL');setSources({});setErrors([]);setLimit(12);};
+ const kindLabel=row=>row.kind==='rewards'?(en?'Reward':'Phần thưởng')+' · '+(row.status==='CLAIMED'?(en?'Claimed':'Đã nhận'):(en?'Unclaimed':'Chưa nhận')):row.kind==='challenges'?(en?'Challenge':'Thử thách')+' · '+(en?({ACTIVE:'Active',COMPLETED:'Completed',ABANDONED:'Stopped'})[row.status]:({ACTIVE:'Đang chạy',COMPLETED:'Hoàn thành',ABANDONED:'Đã dừng'})[row.status]):row.kind==='active'?(en?'Active habit':'Thói quen đang bật'):row.kind==='inactive'?(en?'Paused habit':'Thói quen đã tắt'):(en?'Goal':'Mục tiêu')+' · '+(en?({ACTIVE:'Active',COMPLETED:'Completed',ABANDONED:'Abandoned'})[row.status]:({ACTIVE:'Đang thực hiện',COMPLETED:'Đã hoàn thành',ABANDONED:'Đã hủy'})[row.status]);
+ const focusResult=(event,current)=>{if(event.altKey||event.ctrlKey||event.metaKey||event.nativeEvent?.isComposing)return;const links=[...(dialog.current?.querySelectorAll('[data-quick-result]')??[])];const next=quickSearchNextIndex(current,event.key,links.length);if(next!==null){event.preventDefault();links[next].focus();links[next].scrollIntoView({block:'nearest'});}};
+ const showItems=Boolean(query.trim())||!['ALL','PAGES'].includes(effectiveType);
+ return <><div style={{display:'flex',justifyContent:'flex-end',marginBottom:'1rem'}}><button className="btn btn-secondary btn-sm" disabled={disabled} aria-haspopup="dialog" onClick={()=>setOpen(true)}>{en?'Quick search':'Tìm nhanh'} <span aria-hidden="true">⌘ / Ctrl K</span></button></div>
+ {open&&<ModalOverlay onClose={close}><section ref={dialog} className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-search-title" onClick={e=>e.stopPropagation()} onKeyDown={e=>{const link=e.target.closest('[data-quick-result]');if(!link)return;if(e.key==='ArrowUp'&&link===dialog.current.querySelector('[data-quick-result]')){e.preventDefault();input.current?.focus();return;}focusResult(e,[...dialog.current.querySelectorAll('[data-quick-result]')].indexOf(link));}}>
+  <h2 id="quick-search-title">{en?'Find a page or your saved items':'Tìm màn hình và các mục đã lưu'}</h2>
+  <label className="form-label" htmlFor="quick-search-query">{en?'Search by name, habit tags or description':'Tìm theo tên, nhãn thói quen hoặc mô tả'}</label>
+  <input ref={input} id="quick-search-query" type="search" autoComplete="off" className="form-input" maxLength={100} aria-describedby="quick-search-keyboard" value={query} onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp')focusResult(e,-1);}} onChange={e=>{setQuery(e.target.value);setLimit(12);}}/>
+  <label className="form-label" htmlFor="quick-search-type">{en?'Content type':'Loại nội dung'}</label><select id="quick-search-type" className="form-select" value={effectiveType} onChange={e=>{setType(e.target.value);setLimit(12);}}>{[['ALL',en?'All':'Tất cả'],['PAGES',en?'Pages':'Màn hình'],['HABITS',en?'Habits':'Thói quen'],['GOALS',en?'Goals':'Mục tiêu'],['CHALLENGES',en?'Challenges':'Thử thách'],...(isPremium?[['REWARDS',en?'Rewards':'Phần thưởng']]:[])].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+  <p id="quick-search-keyboard">{en?'Arrow Down/Up moves through results; Enter opens the focused link. Arrow Up from the first result returns to search. Escape closes.':'Mũi tên xuống/lên di chuyển giữa kết quả; Enter mở liên kết đang chọn. Mũi tên lên từ kết quả đầu quay lại ô tìm. Escape để đóng.'}</p>
+  <p>{en?'Choose a content type to browse without a keyword. Journal entries and check-in notes are excluded. Opening a result does not change any data.':'Chọn loại nội dung để xem danh sách ngay cả khi chưa nhập từ khóa. Không tìm nội dung nhật ký hay ghi chú check-in. Mở kết quả không thay đổi dữ liệu.'}</p>
+  {loading&&<p role="status">{en?'Loading your saved items…':'Đang tải các mục đã lưu…'}</p>}{errors.length>0&&<p role="alert">{en?'Some data could not be loaded. Results are incomplete; page shortcuts remain available.':'Chưa tải được một phần dữ liệu. Kết quả chưa đầy đủ; các lối tắt màn hình vẫn dùng được.'}</p>}
+  {['ALL','PAGES'].includes(effectiveType)&&<><h3>{en?'Pages':'Màn hình'}</h3><div style={{display:'flex',gap:'.5rem',flexWrap:'wrap',margin:'1rem 0'}}>{result.pages.map(row=><Link data-quick-result key={row.key} className="btn btn-secondary btn-sm" to={row.path} onClick={close}>{row.name}</Link>)}</div>{!result.pages.length&&<p>{en?'No matching pages.':'Không có màn hình phù hợp.'}</p>}</>}
+  {showItems&&<><h3>{en?'Your saved items':'Các mục đã lưu của bạn'}</h3><p role="status">{en?'Matching results':'Kết quả phù hợp'}: {result.items.length} · {en?'Shown':'Đang hiển thị'}: {Math.min(limit,result.items.length)}</p>{!loading&&!result.items.length&&<p>{en?'No matching results in the loaded data.':'Không có kết quả phù hợp trong dữ liệu đã tải.'}</p>}<ul style={{listStyle:'none',padding:0}}>{result.items.slice(0,limit).map(row=><li key={row.key} style={{margin:'.75rem 0',overflowWrap:'anywhere'}}><Link data-quick-result to={row.path} onClick={close}>{row.name}</Link><p>{kindLabel(row)}</p></li>)}</ul>{result.items.length>limit&&<button className="btn btn-secondary btn-sm" onClick={()=>setLimit(v=>v+12)}>{en?'Show more':'Xem thêm'}</button>}</>}
+  <div style={{display:'flex',gap:'.75rem',flexWrap:'wrap',marginTop:'1rem'}}><button className="btn btn-secondary" disabled={loading} onClick={()=>setAttempt(v=>v+1)}>{en?'Reload data':'Tải lại dữ liệu'}</button><button className="btn btn-secondary" onClick={close}>{en?'Close':'Đóng'}</button></div>
+ </section></ModalOverlay>}</>;
+}

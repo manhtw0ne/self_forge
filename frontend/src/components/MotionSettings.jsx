@@ -1,0 +1,5 @@
+import {useLanguage} from '../context/useLanguage';import {useMotion} from '../context/useMotion';
+export default function MotionSettings(){
+ const {t}=useLanguage(),motion=useMotion();
+ return <section style={{margin:'1rem 0',padding:'1rem',border:'1px solid var(--border-color)',borderRadius:'0.75rem'}}><h3>{t('Chuyển động giao diện')}</h3><label className="form-label">{t('Mức chuyển động')}<select className="form-select" value={motion.preference} onChange={event=>motion.change(event.target.value)}><option value="SYSTEM">{t('Theo cài đặt thiết bị')}</option><option value="REDUCED">{t('Luôn giảm chuyển động')}</option></select></label><p role="status">{t(motion.reduced?'Đang giảm chuyển động.':'Đang dùng chuyển động thông thường.')}</p><p>{t('Áp dụng cho hiệu ứng chuyển trang, thanh tiến độ và bạn đồng hành. Cài đặt giảm chuyển động của thiết bị luôn được tôn trọng; không thay đổi bộ đếm giờ hoặc dữ liệu hoạt động.')}</p><p>{t('Tùy chọn dùng chung trên trình duyệt này và không đồng bộ sang thiết bị khác.')}</p>{motion.storageError&&<p role="alert">{t('Chưa lưu được tùy chọn chuyển động. Lựa chọn hiện tại vẫn áp dụng khi trang đang mở.')}</p>}</section>;
+}

@@ -1,0 +1,1 @@
+function e(){let e=0;return{invalidate(){e++},async run(t,n,r,i){let a=++e;try{let r=await t();a===e&&n(r)}catch(t){a===e&&r(t)}finally{a===e&&i()}}}}export{e as t};

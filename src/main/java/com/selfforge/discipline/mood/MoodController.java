@@ -26,14 +26,25 @@ public class MoodController {
         this.currentUserService = currentUserService;
     }
 
+    @org.springframework.web.bind.annotation.DeleteMapping
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@Valid @RequestBody MoodRequests.DeleteMoodRequest request,HttpServletRequest servletRequest) {
+        moodService.delete(currentUserService.requireUser(servletRequest),request);
+    }
+
     @PostMapping
     public MoodResponse save(@Valid @RequestBody SaveMoodRequest request, HttpServletRequest servletRequest) {
         return moodService.saveOrUpdate(currentUserService.requireUser(servletRequest), request);
     }
 
     @GetMapping
-    public MoodResponse today(HttpServletRequest servletRequest) {
-        return moodService.getToday(currentUserService.requireUser(servletRequest));
+    public MoodResponse today(@RequestParam(required=false) @org.springframework.format.annotation.DateTimeFormat(iso=org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,HttpServletRequest servletRequest) {
+        return moodService.getByDate(currentUserService.requireUser(servletRequest),date);
+    }
+
+    @GetMapping("/monthly")
+    public MoodService.MonthHistory monthly(@RequestParam(required=false) @org.springframework.format.annotation.DateTimeFormat(pattern="yyyy-MM") java.time.YearMonth month,HttpServletRequest servletRequest) {
+        return moodService.monthHistory(currentUserService.requireUser(servletRequest),month);
     }
 
     @GetMapping("/history")

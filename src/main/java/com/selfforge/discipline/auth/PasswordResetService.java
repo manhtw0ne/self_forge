@@ -19,12 +19,15 @@ public class PasswordResetService {
     private final AuthSessionRepository sessions;
     private final PasswordResetMail mail;
     private final Clock clock;
+    private final AccountSecurityEventService securityEvents;
     private final SecureRandom random = new SecureRandom();
 
     public PasswordResetService(AppUserRepository users, PasswordResetCodeRepository codes,
-            PasswordHasher hasher, AuthSessionRepository sessions, PasswordResetMail mail, Clock clock) {
+            PasswordHasher hasher, AuthSessionRepository sessions, PasswordResetMail mail, Clock clock,
+            AccountSecurityEventService securityEvents) {
         this.users = users; this.codes = codes; this.hasher = hasher;
         this.sessions = sessions; this.mail = mail; this.clock = clock;
+        this.securityEvents = securityEvents;
     }
     public boolean available() { return mail.available(); }
     private void requireAvailable() {
@@ -52,18 +55,36 @@ public class PasswordResetService {
     @Transactional(noRollbackFor = InvalidCode.class)
     public void reset(String email, String otp, String password) {
         requireAvailable();
+        PasswordPolicy.validate(email, password);
         var found = users.findByEmail(email.trim().toLowerCase(Locale.ROOT));
-        if (found.isEmpty()) throw new InvalidCode();
+        if (found.isEmpty()) {
+            // Keep an unknown address on the same expensive verification path
+            // as a wrong or expired OTP before returning the generic error.
+            hasher.consumeMissingAccountWork(otp);
+            throw new InvalidCode();
+        }
         var user = users.lockById(found.get().getId()).orElseThrow();
-        var code = codes.findById(user.getId()).orElseThrow(InvalidCode::new);
+        var code = codes.findById(user.getId()).orElse(null);
+        if (code == null) {
+            hasher.consumeMissingAccountWork(otp);
+            throw new InvalidCode();
+        }
+        if (code.getCodeHash() == null) {
+            // A delivery failure consumes the code and clears its hash. Do the
+            // same bounded dummy work instead of dereferencing the cleared value.
+            hasher.consumeMissingAccountWork(otp);
+            throw new InvalidCode();
+        }
+        boolean matchingCode = hasher.matches(otp, code.getCodeHash());
         if (!code.usable(clock.instant())) throw new InvalidCode();
-        if (!hasher.matches(otp, code.getCodeHash())) {
+        if (!matchingCode) {
             code.failedAttempt();
             throw new InvalidCode();
         }
         user.updatePasswordHash(hasher.hash(password));
         code.consume();
         sessions.deleteByUserId(user.getId());
+        securityEvents.record(user.getId(), AccountSecurityEventType.PASSWORD_RESET);
     }
     public static class InvalidCode extends IllegalArgumentException {
         public InvalidCode() { super("Mã không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu mã mới."); }

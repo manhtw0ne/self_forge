@@ -8,6 +8,7 @@ public record HabitResponse(
         String description,
         Difficulty difficulty,
         int targetPerWeek,
+        String scheduledDays,
         int points,
         boolean active,
         Long categoryId,
@@ -18,7 +19,7 @@ public record HabitResponse(
         String stackGroup,
         Instant createdAt
 ) {
-    static HabitResponse from(Habit habit) {
+    public static HabitResponse from(Habit habit) {
         var category = habit.getCategory();
         boolean canReadCategory = category != null && (category.isSystemDefault()
                 || (habit.getUser() != null && category.getUser().getId().equals(habit.getUser().getId())));
@@ -28,6 +29,7 @@ public record HabitResponse(
                 habit.getDescription(),
                 habit.getDifficulty(),
                 habit.getTargetPerWeek(),
+                habit.getScheduledDays(),
                 habit.getPoints(),
                 habit.isActive(),
                 canReadCategory ? habit.getCategory().getId() : null,

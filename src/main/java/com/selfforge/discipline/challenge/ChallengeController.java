@@ -50,6 +50,11 @@ public class ChallengeController {
         return challengeService.progress(currentUserService.requireUser(servletRequest), id);
     }
 
+    @GetMapping("/{id}/history")
+    public ChallengeHistoryResponse history(@PathVariable Long id, HttpServletRequest servletRequest) {
+        return challengeService.history(currentUserService.requireUser(servletRequest), id);
+    }
+
     @PatchMapping("/{id}/status")
     public ChallengeResponse updateStatus(
             @PathVariable Long id,

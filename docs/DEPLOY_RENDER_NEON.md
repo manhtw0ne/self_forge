@@ -99,6 +99,9 @@ Trong phần **Environment**, nhập từng cặp, không thêm dấu nháy bao 
 | `DATABASE_PASSWORD` | Password Neon |
 | `PORT` | `8080` |
 | `APP_CORS_ALLOWED_ORIGINS` | Origin HTTPS thực tế Render cấp, ví dụ `https://selfforge-evol.onrender.com` |
+| `TRUST_FORWARDED_CLIENT_ADDRESS` | `true` **chỉ khi** xác nhận reverse proxy đã xóa header giả mạo từ client; cần thiết để giới hạn gửi OTP theo mạng người dùng thay vì IP nội bộ của proxy |
+| `EMAIL_REQUEST_PER_CLIENT_LIMIT` | Tùy chọn, mặc định `8` yêu cầu gửi email/phút/mạng; chỉ điều chỉnh sau khi theo dõi người dùng thật |
+| `LOGIN_ATTEMPT_PER_CLIENT_LIMIT` | Tùy chọn, mặc định `30` lần đăng nhập/đăng ký/phút/mạng; chỉ điều chỉnh sau khi theo dõi người dùng thật |
 
 Nếu chưa biết URL cuối cùng, cập nhật `APP_CORS_ALLOWED_ORIGINS` ngay khi dashboard cấp URL rồi redeploy. Dùng đúng origin, không có `/api` hay dấu `/` cuối. Không thêm `VITE_API_URL`: frontend đang gọi `/api` trên cùng domain.
 

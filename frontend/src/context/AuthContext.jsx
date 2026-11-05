@@ -1,6 +1,6 @@
 import { checkAuthStorage } from '../utils/authStorage';
 import { restoreSession, revokeStoredSession } from '../utils/authSession';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import { AuthContext } from './auth-context';
 
@@ -56,14 +56,33 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
-  const register = async (email, displayName, password, code) => {
+  const register = async (email, displayName, password, code, inviteCode, termsAccepted) => {
     try { checkAuthStorage(window.localStorage); }
     catch { setStorageUnavailable(true); throw new Error('Browser storage unavailable'); }
-    const res = await api.post('/auth/register', { email, displayName, password, code });
+    const res = await api.post('/auth/register', { email, displayName, password, code, inviteCode, termsAccepted });
     localStorage.setItem('sf_token', res.data.token);
     setUser(res.data.user);
     return res.data;
   };
+
+  const completeOAuth = useCallback(async (ticket = null) => {
+    try { checkAuthStorage(window.localStorage); }
+    catch { setStorageUnavailable(true); throw new Error('Browser storage unavailable'); }
+    const res = await api.post('/auth/oauth/complete', ticket ? { ticket } : undefined);
+    localStorage.setItem('sf_token', res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  }, []);
+
+  const completeNativeOAuth = useCallback(async (handoff) => {
+    try { checkAuthStorage(window.localStorage); }
+    catch { setStorageUnavailable(true); throw new Error('Browser storage unavailable'); }
+    const res = await api.post('/auth/oauth/native/complete', { handoff }, { validateStatus: status => status === 200 || status === 202 });
+    if (res.status === 202) return null;
+    localStorage.setItem('sf_token', res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  }, []);
 
   const logout = async () => {
     try {
@@ -83,7 +102,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, sessionError, storageUnavailable, retrySession, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, sessionError, storageUnavailable, retrySession, login, register, completeOAuth, completeNativeOAuth, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,8 @@
 # SelfForge — Giai đoạn sản phẩm 2: AI hỗ trợ duy trì thói quen
 
-Ngày lập: 22/09/2026. Trạng thái: chưa triển khai. Kế hoạch cha: [PUBLIC_PRODUCT_UPGRADE_PLAN.md](PUBLIC_PRODUCT_UPGRADE_PLAN.md), mục 16.
+Ngày lập: 22/09/2026; cập nhật phạm vi 2026-11-02. Chỉ AI-2A (tổng kết tuần) nằm trong phạm vi thử nghiệm; ưu tiên phần cốt lõi trước. Các luồng AI khác tạm dừng mở rộng theo [DEVELOPMENT_PRIORITIES.md](DEVELOPMENT_PRIORITIES.md). Code/provider adapter, quota và feature flags đã có cần được kiểm tra và tận dụng; các checklist dưới đây không khẳng định mọi mục đều chưa có implementation.
+
+Quyết định này thay thế trình tự mở ba luồng AI trong kế hoạch cũ. Các phần GOAL, RESTART, JOURNAL, DAILY_FOCUS và CHAT được giữ để tham khảo, chỉ cho phép mở lại khi chủ dự án có quyết định mới. Trong beta weekly đầu tiên, chỉ dùng dữ liệu có cấu trúc; chưa đưa nội dung nhật ký vào payload.
 
 ## 1. Mục tiêu và kết quả nghiên cứu
 
@@ -25,13 +27,13 @@ Kế hoạch 3 ngày là giả thuyết sản phẩm cần thử nghiệm, khôn
 | Ưu tiên | Tính năng | Vị trí | Đợt |
 |---|---|---|---|
 | 1 | Tổng kết tuần: tiến độ, trở ngại có căn cứ, 1–3 điều chỉnh | Weekly Review | AI-2A |
-| 2 | Mục tiêu → bước nhỏ, habit, thử thách ban đầu | Goals | AI-2B |
-| 3 | Gợi ý khi mất nhịp và kế hoạch bắt đầu lại 3 ngày | Dashboard/check-in | AI-2C |
-| 4 | Phản hồi nhật ký: nhận xét, câu hỏi, hành động ngày mai | Journal | Sau beta ba luồng đầu |
-| 5 | Lập kế hoạch hôm nay theo thời gian/năng lượng, chia Pomodoro | Dashboard/Pomodoro | Sau beta ba luồng đầu |
-| 6 | Chat Coach hỏi đáp về tiến độ cá nhân | Trang Coach | Cuối cùng, sau khi có đánh giá và ngân sách riêng |
+| — | Mục tiêu → bước nhỏ, habit, thử thách ban đầu | Goals | AI-2B — tạm dừng mở rộng |
+| — | Gợi ý khi mất nhịp và kế hoạch bắt đầu lại 3 ngày | Dashboard/check-in | AI-2C — tạm dừng mở rộng |
+| — | Phản hồi nhật ký: nhận xét, câu hỏi, hành động ngày mai | Journal | Tạm dừng mở rộng |
+| — | Lập kế hoạch hôm nay theo thời gian/năng lượng, chia Pomodoro | Dashboard/Pomodoro | Tạm dừng mở rộng |
+| — | Chat Coach hỏi đáp về tiến độ cá nhân | Trang Coach | Tạm dừng mở rộng |
 
-Không thêm chatbot tổng quát, duyệt web, vector database hay agent tự hành trong bản đầu. Các dịch vụ Java hiện tại có thể tổng hợp dữ liệu có cấu trúc đủ cho ba luồng này.
+Không thêm chatbot tổng quát, duyệt web, vector database hay agent tự hành. Chỉ hoàn thiện phần hạ tầng cần cho thử nghiệm tổng kết tuần hiện hành.
 
 ## 4. AI-2A — Tổng kết tuần
 
@@ -39,7 +41,7 @@ Luồng: chọn tuần → xem phạm vi dữ liệu → bấm tạo → nhận 
 
 - [ ] Backend tính số lượt theo lịch, hoàn thành, bỏ qua, thất bại, chưa check-in, Pomodoro và tiến độ goal theo timezone; thiếu check-in không đồng nghĩa xác nhận đã thất bại.
 - [ ] Snapshot có khoảng ngày, phiên bản và source ID người dùng được phép xem; không gửi email, token hoặc thông tin thanh toán.
-- [ ] Nhật ký mặc định không được gửi. Nếu bật, chỉ lấy các mục trong khoảng ngày đã cho phép và hiển thị phạm vi đó trước khi tạo.
+- [ ] Beta weekly hiện hành không gửi nội dung nhật ký. Cơ chế dùng nội dung nhật ký chỉ được xem xét khi chủ dự án mở lại phạm vi và có consent/phạm vi riêng.
 - [ ] Đầu ra gồm tóm tắt ngắn, điểm tiến bộ, tối đa 3 nhận xét và 1–3 hành động tuần tới; phân biệt dữ kiện, giả thuyết và đề xuất.
 - [ ] Số liệu hiển thị do backend chèn; model tham chiếu metric ID, không tự tạo số. Source ID phải nằm trong snapshot và thuộc đúng user.
 - [ ] Với liên hệ từ nhật ký, dùng cách nói “có thể liên quan”, không kết luận nguyên nhân. Kiểm tra câu nhận xét có được nguồn hỗ trợ; chỉ ID hợp lệ chưa đủ chứng minh câu đúng.
@@ -50,7 +52,7 @@ Ví dụ hoàn toàn giả lập: “Tuần này bạn hoàn thành 18/25 lượ
 
 Nghiệm thu: khớp thống kê server, nguồn mở đúng tài khoản/tuần, không dùng journal khi chưa bật; có nút xem đề xuất và giữ nguyên, không tự sửa habit.
 
-## 5. AI-2B — Biến mục tiêu thành kế hoạch
+## 5. AI-2B — Biến mục tiêu thành kế hoạch (tạm dừng mở rộng)
 
 - [ ] Nhận mục tiêu, hạn hoàn thành, mức hiện tại, thời gian rảnh/ngày và ngày có thể thực hiện; hỏi bổ sung tối thiểu nếu thiếu dữ liệu quyết định.
 - [ ] Ví dụ “đọc 12 cuốn/năm”: hỏi đã đọc bao nhiêu, mốc thời gian và thời lượng có thể dành; không mặc định mọi sách dài như nhau hoặc tự biết tốc độ đọc.
@@ -61,7 +63,7 @@ Nghiệm thu: khớp thống kê server, nguồn mở đúng tài khoản/tuần
 
 Nghiệm thu: nhấn áp dụng hai lần không tạo habit trùng; vượt quota được giải thích trước; người mới không bị gán lịch sử giả; kế hoạch không vượt thời gian đã khai mà không cảnh báo và cho chỉnh.
 
-## 6. AI-2C — Chế độ bắt đầu lại trong 3 ngày
+## 6. AI-2C — Chế độ bắt đầu lại trong 3 ngày (tạm dừng mở rộng)
 
 - [ ] Backend phát hiện mất nhịp bằng quy tắc minh bạch, ví dụ bỏ lỡ hai lượt theo lịch liên tiếp; ngưỡng là cấu hình để kiểm thử, không do model tự gán.
 - [ ] Chỉ mời sử dụng nhẹ nhàng; có bỏ qua và ẩn lời mời, không gọi AI sau mọi check-in thất bại.
@@ -104,7 +106,7 @@ Retry có giới hạn/backoff; phân biệt quota người dùng với chi phí
 
 ## 9. Quota, ngân sách và mô hình Premium
 
-Đề xuất thử nghiệm, chưa phải gói đã bán: tối đa 5 tổng kết tuần, 4 kế hoạch mục tiêu và 4 kế hoạch bắt đầu lại mỗi user AI/tháng; tổng kết cùng tuần trả bản đã lưu trừ khi người dùng chủ động tạo lại trong quota. Chế độ bắt đầu lại bằng mẫu cố định vẫn có thể dành cho Free.
+Thử nghiệm chỉ áp dụng cho tổng kết tuần. Tận dụng quota weekly hiện có (mặc định cấu hình 4 lượt/tháng), xác nhận lại cấu hình thực tế và ngân sách trước khi bật; cùng tuần trả bản đã lưu trừ khi người dùng chủ động tạo lại trong quota. Không mở quota hay quyền AI cho các luồng đang tạm dừng. Chế độ bắt đầu lại bằng mẫu cố định vẫn thuộc phần không dùng AI.
 
 - [ ] Chốt quyền AI riêng trong entitlement, không âm thầm thêm “AI không giới hạn” vào mọi gói Premium/trọn đời đã bán.
 - [ ] Giới hạn input/output token từng tác vụ, lượt tạo/ngày và/tháng, số job đồng thời và tổng ngân sách dự án.
@@ -113,38 +115,38 @@ Retry có giới hạn/backoff; phân biệt quota người dùng với chi phí
 
 Công thức: chi phí model = tổng(input token × giá input + output token × giá output) / 1.000.000, cộng retry, các phí provider khác và hạ tầng liên quan. Giá phải lấy từ provider chính thức sau khi chọn model, không dùng một giá giả làm báo giá.
 
-Ví dụ khối lượng để lập ngân sách: 100 user AI dùng đủ 13 lượt/tháng = 1.300 lượt; giả định trung bình 3.000 input + 800 output token/lượt thì khoảng 3,9 triệu input và 1,04 triệu output token/tháng, trước retry. Đây là giả định cần đo; 100 user app không nhất thiết là 100 user AI trả phí.
+Ví dụ minh họa weekly: 100 người dùng thử dùng đủ 4 lượt/tháng = 400 lượt; giả định trung bình 3.000 input + 800 output token/lượt thì khoảng 1,2 triệu input và 320.000 output token/tháng, trước retry. Đây là giả định khối lượng cần đo, không phải báo giá hoặc bằng chứng ROI; người dùng thử không mặc nhiên là người trả phí.
 
 Mức trần chi tiêu và quota cuối cùng cần chủ dự án quyết định trước khi bật API trả phí. Ước tính vận hành web trước đây chưa gồm khoản này. Đo chi phí mỗi kết quả hữu ích và mỗi người trả phí để điều chỉnh giá, thay vì chỉ đếm request.
 
 ## 10. Đánh giá và tiêu chí phát hành
 
-Tạo tối thiểu 60 tình huống giả lập có đáp án/rubric: 20 cho mỗi luồng, gồm Việt/Anh, thiếu dữ liệu, lịch không đều, timezone, ngày nghỉ, dữ liệu mâu thuẫn, journal opt-out, prompt injection, nội dung nhạy cảm và proposal hết hạn. Chạy lại khi đổi model/prompt/schema.
+Rà soát bộ eval đã có và hoàn thiện tối thiểu 20 tình huống weekly có đáp án/rubric: Việt/Anh, thiếu dữ liệu, lịch không đều, timezone, ngày nghỉ, dữ liệu mâu thuẫn, không gửi nội dung nhật ký, prompt injection, nội dung nhạy cảm và dữ liệu tuần thay đổi. Chạy lại khi đổi model/prompt/schema. Bộ eval của các luồng đang tạm dừng không thuộc công việc mở rộng hiện hành.
 
 | Tiêu chí | Cổng nghiệm thu đề xuất |
 |---|---|
 | Số liệu/quyền dữ liệu | 100% trường số liệu hiển thị khớp backend; không tham chiếu dữ liệu user khác trên bộ test |
-| Consent | Không gửi journal trong mọi test opt-out; thu hồi consent chặn job mới và apply không hợp lệ |
+| Consent | Không gửi nội dung nhật ký trong beta weekly; chưa đồng ý hoặc thu hồi consent chặn job mới |
 | Nhận xét có căn cứ | Ít nhất 95% nhận xét được người đánh giá xác nhận có nguồn hỗ trợ; không chấp nhận nhận xét nghiêm trọng bịa đặt |
-| Thay đổi dữ liệu | 100% thay đổi cần duyệt; request apply lặp không gây tác động trùng; dữ liệu cũ khiến proposal cần làm mới |
+| Thay đổi dữ liệu | Provider không ghi dữ liệu nghiệp vụ; người dùng duyệt và thực hiện đề xuất qua luồng lõi có sẵn |
 | Hữu ích | Ít nhất 80% trường hợp được người review chấm ≥ 4/5 về cụ thể, khả thi và giọng điệu hỗ trợ |
 | Chi phí và lỗi | Không vượt trần từ request đồng thời; provider lỗi vẫn dùng được habit/check-in/journal |
 | Trải nghiệm | Mục tiêu p95 tạo kết quả ≤ 20 giây trong beta; timeout có thông báo/retry, không spinner vô hạn |
 
 Đây là ngưỡng dự kiến, chưa phải kết quả; bộ test nhỏ không chứng minh an toàn tuyệt đối. Reviewer phải đọc căn cứ thực tế, không chỉ dựa vào một model khác chấm model.
 
-Beta 5–10 người đồng ý trước, sau đó 30 rồi 100 khi đạt cổng. Đo tỷ lệ xem/chấp nhận/sửa/từ chối đề xuất, đánh giá hữu ích, quay lại check-in sau bắt đầu lại và retention ngày 7. So sánh với gợi ý mẫu không AI khi có thể; không kết luận quan hệ nhân quả từ một nhóm nhỏ tự chọn. Analytics không chứa nhật ký hoặc toàn bộ phản hồi AI.
+Beta weekly 5–10 người đồng ý trước, sau đó 30 rồi 100 khi đạt cổng. Đo tỷ lệ xem/chấp nhận/sửa/từ chối đề xuất, đánh giá hữu ích, hành động thực hiện sau tổng kết và quay lại tuần sau/ngày 7. So sánh với tổng kết thống kê/mẫu dùng cùng dữ liệu; không kết luận quan hệ nhân quả từ một nhóm nhỏ tự chọn. Analytics không chứa nhật ký hoặc toàn bộ phản hồi AI.
 
 ## 11. Trình tự, thời gian và bàn giao
 
 | Đợt | Công việc | Ước lượng sơ bộ |
 |---|---|---|
-| AI-2.0 | Chọn provider bằng bộ eval, consent, snapshot, schema, quota và adapter | 1–2 tuần |
-| AI-2A | Tổng kết tuần, nguồn tham chiếu, UI Việt/Anh và beta nhỏ | 1–2 tuần |
-| AI-2B | Tạo kế hoạch mục tiêu, preview/apply và chống tạo trùng | 1–2 tuần |
-| AI-2C | Bắt đầu lại 3 ngày, lịch có hiệu lực, đánh giá sau ngày 3 | 1–2 tuần |
-| AI-2D | Kiểm thử chéo, đánh giá chất lượng/chi phí và mở rộng beta | 1–2 tuần, có thể giao với beta trước |
+| AI-2.0 | Rà soát/tận dụng code weekly, eval, consent, snapshot, quota và adapter đã có | Xếp lịch sau điều kiện lõi, chưa cam kết thời gian |
+| AI-2A | Chỉ hoàn thiện tổng kết tuần, nguồn tham chiếu, UI Việt/Anh và beta nhỏ | Theo phần còn thiếu sau rà soát |
+| AI-2B | Tạm dừng mở rộng kế hoạch mục tiêu | Chưa xếp lịch |
+| AI-2C | Tạm dừng mở rộng AI bắt đầu lại | Chưa xếp lịch |
+| AI-2D | Chỉ đánh giá chất lượng, hành động hữu ích và chi phí của weekly; quyết định tiếp tục/dừng | Theo dữ liệu beta, chưa cam kết thời gian |
 
-Ước lượng cho một người hiểu dự án sau khi giai đoạn 1 ổn định; không gồm thời gian chờ người beta hoặc thay đổi lớn ở lịch habit. Nếu lịch chưa lưu phiên bản theo ngày hiệu lực, phải xử lý trước AI-2C.
+Chỉ xếp lịch công việc weekly sau khi rà soát trạng thái lõi và implementation hiện có. Thời gian chờ beta hoặc thay đổi lớn ở lịch habit cần ghi riêng; không lấy ước lượng trong kế hoạch cũ để tự khởi động các luồng đang tạm dừng.
 
-Bàn giao: migrations, API/UI, bộ eval và kết quả, bảng token/cost thực đo, consent/retention, runbook lỗi provider, feature flag tắt AI và quyết định go/no-go. Chỉ mở ba luồng đầu; nhật ký phản hồi, kế hoạch hôm nay và Chat Coach cần đợt lập kế hoạch riêng dựa trên dữ liệu beta.
+Bàn giao phạm vi weekly: API/UI cần thiết, bộ eval và kết quả, bảng chi phí thực đo gồm công phát triển/vận hành, consent, runbook lỗi provider, feature flag và quyết định tiếp tục/dừng. So sánh với tổng kết thống kê/mẫu, đo chấp nhận đề xuất và hành động sau đó; đủ mẫu mới kết luận tác động lên retention/chuyển đổi. Chỉ chủ dự án có thể quyết định mở lại các luồng AI đang tạm dừng.

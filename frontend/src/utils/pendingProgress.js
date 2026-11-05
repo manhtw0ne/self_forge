@@ -41,3 +41,8 @@ export function removePendingProgress(storage, userId, requestId) {
 export function isDefinitiveProgressRejection(status) {
   return [400, 404, 409, 422].includes(status);
 }
+export async function confirmGoalProgress(post, cleanup) {
+  const response = await post();
+  try { await cleanup(); return { response, cleanupFailed: false }; }
+  catch { return { response, cleanupFailed: true }; }
+}

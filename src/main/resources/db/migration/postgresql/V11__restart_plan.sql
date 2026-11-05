@@ -1,0 +1,10 @@
+CREATE TABLE restart_plan (
+ user_id BIGINT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+ revision BIGINT NOT NULL,
+ name VARCHAR(255) NOT NULL,
+ reason VARCHAR(16) NOT NULL,
+ start_date DATE NOT NULL,
+ step_one VARCHAR(500) NOT NULL,
+ step_two VARCHAR(500) NOT NULL,
+ step_three VARCHAR(500) NOT NULL
+);

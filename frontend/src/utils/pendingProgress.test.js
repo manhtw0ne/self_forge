@@ -63,3 +63,17 @@ test('auth expiry, throttling and ambiguous network failures retain the request'
   }
   for (const status of [400, 404, 409, 422]) assert.equal(isDefinitiveProgressRejection(status), true);
 });
+import { confirmGoalProgress } from './pendingProgress.js';
+test('confirmed progress remains successful when local cleanup fails', async () => {
+  const response = { data: { id: 7, currentValue: 3 } }; let writes = 0;
+  const result = await confirmGoalProgress(async () => { writes++; return response; }, () => { throw Error('Storage blocked after save'); });
+  assert.equal(result.response, response);
+  assert.equal(result.cleanupFailed, true);
+  assert.equal(writes, 1);
+  assert.equal((await confirmGoalProgress(async () => response, () => {})).cleanupFailed, false);
+});
+test('an unconfirmed progress request preserves its original error without clearing retry state', async () => {
+  const failure = { response: { status: 503 } }; let cleaned = false;
+  await assert.rejects(confirmGoalProgress(async () => { throw failure; }, () => { cleaned = true; }), error => error === failure);
+  assert.equal(cleaned, false);
+});

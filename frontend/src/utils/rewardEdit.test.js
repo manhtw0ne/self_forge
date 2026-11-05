@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {rewardEditPayload} from './rewardEdit.js';
+const source={id:1,name:'Old',description:null,xpCost:20,claimed:false,private:'secret'};
+test('reward edit payload keeps an exact baseline and allowlists editable fields',()=>{const payload=rewardEditPayload({name:' New ',description:' Text ',xpCost:'30',claimed:true},source);assert.deepEqual(payload,{name:'New',description:'Text',xpCost:30,expected:{name:'Old',description:'',xpCost:20}});assert.equal(source.xpCost,20);});
+test('reward edits reject claimed sources and invalid prices',()=>{assert.throws(()=>rewardEditPayload({name:'N',description:'',xpCost:30},{...source,claimed:true}));for(const xpCost of [0,-1,1.5,1000001])assert.throws(()=>rewardEditPayload({name:'N',description:'',xpCost},source));});

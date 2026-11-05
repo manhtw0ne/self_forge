@@ -1,0 +1,1 @@
+import{o as e}from"./dates-CaZvNLnt.js";var t=t=>e(t)&&t>=`0001-01-01`;function n(e){if(!t(e))throw Error(`Invalid journal date`);return`/journal?`+new URLSearchParams({date:e})}function r(e,n){if(!t(n))throw Error(`Invalid account date`);let r=new URLSearchParams(e).getAll(`date`);return r.length?r.length!==1||!t(r[0])||r[0]>n?{invalid:!0}:{date:r[0]}:null}export{r as n,n as t};

@@ -60,6 +60,8 @@ public class PomodoroSession {
         this.note = note;
     }
 
+    public void updateNote(String note) { this.note = note; }
+
     public Long getId() { return id; }
     public AppUser getUser() { return user; }
     public Habit getHabit() { return habit; }

@@ -24,6 +24,12 @@ export function shiftDate(date, offset) {
   return value.toISOString().slice(0, 10);
 }
 
+export function validCalendarDate(value, maximum) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || (maximum && value > maximum)) return null;
+  const parsed = new Date(value + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : null;
+}
+
 // Date-only values must remain on the same calendar day in every browser timezone.
 export function formatCalendarDate(date, language, options = { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric' }) {
   const value = new Date(date + 'T00:00:00Z');
@@ -31,4 +37,10 @@ export function formatCalendarDate(date, language, options = { weekday: 'long', 
   return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'vi-VN', {
     ...options, timeZone: 'UTC',
   }).format(value);
+}
+
+export function calendarWeekStart(date) {
+  if (!validCalendarDate(date)) throw new Error('Invalid calendar date');
+  const weekday = new Date(date + 'T00:00:00Z').getUTCDay();
+  return shiftDate(date, -(weekday + 6) % 7);
 }

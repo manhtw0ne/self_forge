@@ -18,15 +18,18 @@ public class RegistrationVerification {
     private final PasswordResetMail mail;
     private final Clock clock;
     private final boolean required;
+    private final AccountSecurityEventService securityEvents;
     private final SecureRandom random = new SecureRandom();
     public RegistrationVerification(RegistrationCodeRepository codes, AppUserRepository users,
             PasswordHasher hasher, PasswordResetMail mail, Clock clock,
-            @Value("${app.registration.require-email-verification:false}") boolean required) {
+            @Value("${app.registration.require-email-verification:false}") boolean required,
+            AccountSecurityEventService securityEvents) {
         this.codes = codes; this.users = users; this.hasher = hasher;
-        this.mail = mail; this.clock = clock; this.required = required;
+        this.mail = mail; this.clock = clock; this.required = required; this.securityEvents = securityEvents;
     }
     public boolean required() { return required; }
     public boolean available() { return required && mail.available(); }
+    public boolean accountVerificationAvailable() { return mail.available(); }
     private void ensureAvailable() {
         if (!available()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
     }
@@ -46,6 +49,28 @@ public class RegistrationVerification {
                     .warn("Registration email delivery failed; code invalidated.");
         }
     }
+
+    /** Lets a signed-in legacy account prove control of its existing email without re-registering. */
+    public void requestForExistingUser(Long userId) {
+        if (!accountVerificationAvailable()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
+        }
+        AppUser user = users.lockById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        if (user.getEmailVerifiedAt() != null) return;
+        String email = user.getEmail();
+        var code = codes.lockByEmail(email).orElseGet(() -> new RegistrationCode(email));
+        var now = clock.instant();
+        if (!code.canSend(now)) return;
+        String otp = String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000));
+        code.issue(hasher.hash(otp), now);
+        code = codes.saveAndFlush(code);
+        try { mail.sendAccountEmailVerification(email, otp); }
+        catch (MailException failure) {
+            code.consume();
+            org.slf4j.LoggerFactory.getLogger(RegistrationVerification.class)
+                    .warn("Account email verification delivery failed; code invalidated.");
+        }
+    }
     @Transactional(noRollbackFor = PasswordResetService.InvalidCode.class)
     public void verify(String email, String otp) {
         if (!required) return;
@@ -57,5 +82,23 @@ public class RegistrationVerification {
             throw new PasswordResetService.InvalidCode();
         }
         code.consume();
+    }
+
+    @Transactional(noRollbackFor = PasswordResetService.InvalidCode.class)
+    public void verifyExistingUser(Long userId, String otp) {
+        if (!accountVerificationAvailable()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
+        }
+        AppUser user = users.lockById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        if (user.getEmailVerifiedAt() != null) return;
+        var code = codes.lockByEmail(user.getEmail()).orElseThrow(PasswordResetService.InvalidCode::new);
+        if (!code.usable(clock.instant())) throw new PasswordResetService.InvalidCode();
+        if (!hasher.matches(otp, code.getCodeHash())) {
+            code.failedAttempt();
+            throw new PasswordResetService.InvalidCode();
+        }
+        code.consume();
+        user.markEmailVerified(clock.instant());
+        securityEvents.record(userId, AccountSecurityEventType.EMAIL_VERIFIED);
     }
 }

@@ -64,6 +64,16 @@ public class HabitController {
         return habitService.createBatch(currentUserService.requireUser(servletRequest), request.habits(), request.requestId());
     }
 
+    public record CategorySnapshot(@jakarta.validation.constraints.Positive Long categoryId){}
+    public record CategoryAssignment(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Positive Long habitId,
+        @jakarta.validation.constraints.NotNull @Valid CategorySnapshot expected){}
+    public record AssignCategoryRequest(@jakarta.validation.constraints.Positive Long categoryId,
+        @jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max=50) List<@jakarta.validation.constraints.NotNull @Valid CategoryAssignment> items){}
+    @PatchMapping("/categories")
+    public List<HabitResponse> assignCategory(@Valid @RequestBody AssignCategoryRequest body,HttpServletRequest request){
+        return habitService.assignCategory(currentUserService.requireUser(request),body.categoryId(),body.items());
+    }
+
     @PatchMapping("/{id}")
     public HabitResponse update(
             @PathVariable Long id,

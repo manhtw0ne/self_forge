@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { todayInTimezone, shiftDate } from './dates.js';
+import { todayInTimezone, shiftDate, validCalendarDate } from './dates.js';
 
 test('profile dates differ across the new-year boundary at the same instant', () => {
   const now = new Date('2025-12-31T18:00:00Z');
@@ -30,4 +30,21 @@ test('localized calendar dates preserve the day across browser timezones', () =>
   }
   assert.equal(formatCalendarDate('', 'en'), '');
   assert.equal(formatCalendarDate('invalid', 'en'), 'invalid');
+});
+
+test('shared calendar dates reject impossible, future and malformed input', () => {
+  assert.equal(validCalendarDate('2024-02-29', '2026-10-12'), '2024-02-29');
+  for (const value of ['2025-02-29', '2026-02-30', '2026-13-01', '2026-10-13', '2026-1-1', '', null, '2026-10-12T00:00:00Z'])
+    assert.equal(validCalendarDate(value, '2026-10-12'), null);
+});
+
+import { calendarWeekStart } from './dates.js';
+test('week boundaries use account calendar dates, including Sunday and new year', () => {
+  assert.equal(calendarWeekStart('2026-10-18'), '2026-10-12');
+  assert.equal(calendarWeekStart('2026-10-19'), '2026-10-19');
+  assert.equal(calendarWeekStart('2026-01-01'), '2025-12-29');
+  assert.throws(() => calendarWeekStart('2026-02-30'));
+  const instant = new Date('2026-10-18T18:00:00Z');
+  assert.equal(calendarWeekStart(todayInTimezone('Asia/Ho_Chi_Minh', instant)), '2026-10-19');
+  assert.equal(calendarWeekStart(todayInTimezone('America/New_York', instant)), '2026-10-12');
 });

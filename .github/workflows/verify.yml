@@ -1,0 +1,78 @@
+name: Verify SelfForge
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci --ignore-scripts
+
+      - name: Validate frontend
+        run: |
+          npm --prefix frontend run lint
+          npm --prefix frontend test
+          npm --prefix frontend run test:account-sync
+          npm --prefix frontend run test:habit-state-history
+          npm --prefix frontend run test:spa-routes
+          npm --prefix frontend run test:coach
+          npm --prefix frontend run test:support
+          npm --prefix frontend run test:native
+          npm --prefix frontend run test:native-release
+          npm --prefix frontend run build
+
+      - name: Test backend against the fresh web bundle
+        run: |
+          rm -rf src/main/resources/static
+          cp -R frontend/dist src/main/resources/static
+          mvn --batch-mode test
+
+      # Postgres is the production database. The integration suite creates its
+      # own disposable PostgreSQL container and verifies Flyway startup and
+      # restart behaviour, so schema changes cannot rely on H2 alone.
+      - name: Verify PostgreSQL migrations and integration flows
+        run: mvn --batch-mode -Ppostgres-tests test-compile failsafe:integration-test failsafe:verify
+
+      - name: Validate native web bundle configuration
+        env:
+          VITE_API_URL: https://example.invalid/api
+        run: npm --prefix frontend run build:mobile
+
+  container-image:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The production Dockerfile independently compiles the frontend and
+      # backend. This catches packaging or runtime-image regressions that a
+      # host-only test run cannot see, before an image reaches Render.
+      - name: Build production container image
+        run: docker build --tag selfforge:ci .
+

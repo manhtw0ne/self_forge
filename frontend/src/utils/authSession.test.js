@@ -1,6 +1,8 @@
+import { expireFailedSession } from './authSession.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkAuthStorage } from './authStorage.js';
+import { authErrorMessage } from './authError.js';
 import { shouldExpireSession, restoreSession, revokeStoredSession } from './authSession.js';
 const failure = (token, url = '/profile', status = 401) => ({ response: { status }, config: { url, headers: { Authorization: 'Bearer ' + token } } });
 test('late logout cannot clear a newer session', async () => {
@@ -66,4 +68,34 @@ test('public auth errors and non-auth failures retain the session', () => {
 });
 test('supports AxiosHeaders credential lookup', () => {
   assert.equal(shouldExpireSession({response: {status: 401}, config: {headers: {get: () => 'Bearer a'}}}, 'a'), true);
+});
+
+test('expired current session returns to its page after sign-in and never clears a newer login', () => {
+  let token = 'expired'; let destination;
+  const storage = { getItem: () => token, removeItem: () => { token = null; } };
+  const error = { response: { status: 401 }, config: { url: '/auth/me', headers: { Authorization: 'Bearer expired' } } };
+  assert.equal(expireFailedSession(error, () => storage, '/check-in-history?date=2026-10-10', path => { destination = path; }), true);
+  assert.equal(destination, '/login?next=%2Fcheck-in-history%3Fdate%3D2026-10-10');
+  token = 'new'; destination = null;
+  assert.equal(expireFailedSession(error, () => storage, '/profile', path => { destination = path; }), false);
+  assert.equal(token, 'new'); assert.equal(destination, null);
+});
+test('storage access failures during auth expiry leave the original request error available', () => {
+  const error = { response: { status: 401 } };
+  assert.equal(expireFailedSession(error, () => { throw Error('storage blocked'); }, '/profile', () => assert.fail()), false);
+  assert.equal(error.response.status, 401);
+});
+
+test('auth feedback keeps server details and explains blocked browser storage', () => {
+  assert.equal(authErrorMessage({ response: { data: { detail: 'Email is already registered' } } }),
+    'Email is already registered');
+  assert.equal(authErrorMessage({ response: { data: { message: 'Try again later' } } }),
+    'Try again later');
+  assert.equal(authErrorMessage(new Error('Browser storage unavailable')),
+    'Trình duyệt đang chặn lưu trữ. Hãy cho phép trang web lưu dữ liệu trong cài đặt trình duyệt, rồi thử lại.');
+  assert.equal(authErrorMessage(new TypeError("Cannot read properties of undefined (reading 'getItem')")),
+    'Trình duyệt đang chặn lưu trữ. Hãy cho phép trang web lưu dữ liệu trong cài đặt trình duyệt, rồi thử lại.');
+  assert.equal(authErrorMessage(new Error('opaque browser failure'), true),
+    'Trình duyệt đang chặn lưu trữ. Hãy cho phép trang web lưu dữ liệu trong cài đặt trình duyệt, rồi thử lại.');
+  assert.equal(authErrorMessage(new Error('network')), 'Có lỗi xảy ra');
 });

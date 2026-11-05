@@ -7,6 +7,7 @@ import java.util.Optional;
 
 public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "habit")
     List<Reminder> findByUserIdOrderByReminderTimeAsc(Long userId);
 
     List<Reminder> findByUserIdAndEnabledTrueOrderByReminderTimeAsc(Long userId);

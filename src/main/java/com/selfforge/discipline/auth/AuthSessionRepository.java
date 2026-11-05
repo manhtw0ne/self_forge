@@ -16,6 +16,8 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, Long> 
 
     void deleteByUserId(Long userId);
 
+    long deleteByExpiresAtBefore(java.time.Instant cutoff);
+
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "user")
     Optional<AuthSession> findByTokenHash(String tokenHash);
 }

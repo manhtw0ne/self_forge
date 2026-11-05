@@ -1,0 +1,5 @@
+import {validCalendarDate,shiftDate} from './dates.js';
+import {JOURNAL_LIMIT} from './journalLimits.js';
+export function previousJournalDate(date){if(!validCalendarDate(date)||date<'0001-01-01')throw Error('Invalid journal date');const previous=shiftDate(date,-1);return previous<'0001-01-01'?null:previous;}
+export function readPreviousJournal(value,selectedDate){const date=previousJournalDate(selectedDate);if(!date||!value||!Number.isSafeInteger(value.id)||value.id<1||value.date!==date||(value.tomorrowFocus!=null&&(typeof value.tomorrowFocus!=='string'||value.tomorrowFocus.length>JOURNAL_LIMIT)))throw Error('Invalid previous journal');return {id:value.id,date,focus:value.tomorrowFocus||''};}
+export function previousFocusQuestion(source,selectedDate,t=(value,params)=>value.replace('{date}',params.date)){if(source?.date!==previousJournalDate(selectedDate)||typeof source.focus!=='string'||!source.focus.trim())throw Error('No previous focus');return t('Dự định cho ngày này từ bài nhật ký {date} đã được thực hiện đến đâu? Mình muốn giữ lại hoặc điều chỉnh điều gì?',{date:source.date});}

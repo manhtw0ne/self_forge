@@ -24,7 +24,7 @@ public class ApiExceptionHandler {
             com.selfforge.discipline.auth.LoginAttemptLimiter.RateLimited exception) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, exception.getReason());
         return org.springframework.http.ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .header("Retry-After", "60").header("Cache-Control", "no-store").body(detail);
+                .headers(exception.getHeaders()).header("Cache-Control", "no-store").body(detail);
     }
 
     @ExceptionHandler(EntityNotFoundException.class)

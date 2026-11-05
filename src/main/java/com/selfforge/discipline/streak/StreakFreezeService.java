@@ -39,6 +39,9 @@ public class StreakFreezeService {
         var habit = habitService.getHabit(user, habitId);
         var existing = freezeRepository.findByUserIdAndHabitIdAndFreezeDate(user.getId(), habitId, freezeDate);
         if (existing.isPresent()) return StreakFreezeResponse.from(existing.get());
+        if (!habit.isActive()) {
+            throw new IllegalStateException("Thói quen đã tắt. Hãy bật lại trước khi dùng bảo vệ streak.");
+        }
         int max = maxFreezes(user);
         if (usedInMonth(user, YearMonth.from(today)) >= max) {
             throw new IllegalStateException("Đã hết lượt bảo vệ streak tháng này (tối đa " + max + "/tháng)");

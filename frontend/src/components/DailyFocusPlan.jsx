@@ -1,0 +1,55 @@
+import DailyFocusProgress from './DailyFocusProgress';
+import {readDailyFocusDraft,writeDailyFocusDraft,removeDailyFocusDraft} from '../utils/dailyFocusDraft';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {useLanguage} from '../context/useLanguage';
+import {dailyFocusPlan} from '../utils/dailyFocusPlan';
+import {dailyFocusAccountDraft,dailyFocusAccountPayload,readDailyFocusAccount} from '../utils/dailyFocusAccount';
+import {focusHabits,focusLink} from '../utils/focusPlan';
+import DailyFocusCoach from './DailyFocusCoach';
+import {habitPath} from '../utils/habitNavigation';
+import api from '../api/client';
+export default function DailyFocusPlan({habits,owner,today,timezone}){
+ const {t,language}=useLanguage(),en=language==='en';const [open,setOpen]=useState(false),[budget,setBudget]=useState('60'),[energy,setEnergy]=useState('MEDIUM'),[ids,setIds]=useState([]);
+ const [initial]=useState(()=>{try{return {value:readDailyFocusDraft(sessionStorage,owner),error:false};}catch{return {value:null,error:true};}});
+ const [saved,setSaved]=useState(initial.value),[storageError,setStorageError]=useState(initial.error),[savedNotice,setSavedNotice]=useState(false);
+ const [accountPlan,setAccountPlan]=useState(null),[accountLoading,setAccountLoading]=useState(false),[accountError,setAccountError]=useState(false),[accountBusy,setAccountBusy]=useState(false),[accountConflict,setAccountConflict]=useState(false);const accountRequest=useRef(0),accountSaveLock=useRef(false);
+ const loadAccount=useCallback(async()=>{const request=++accountRequest.current;setAccountLoading(true);setAccountError(false);setAccountConflict(false);try{const {data}=await api.get('/daily-focus-plans');const value=readDailyFocusAccount(data,today);if(request===accountRequest.current)setAccountPlan(value);}catch{if(request===accountRequest.current)setAccountError(true);}finally{if(request===accountRequest.current)setAccountLoading(false);}},[today]);
+ useEffect(()=>{if(open)void loadAccount();},[open,loadAccount]);
+ const saveDraft=()=>{try{dailyFocusPlan(budget,energy,ids,habits);const value=writeDailyFocusDraft(sessionStorage,owner,{version:1,date:today,budget,energy,ids});setSaved(value);setStorageError(false);setSavedNotice(true);return true;}catch{setStorageError(true);setSavedNotice(false);return false;}};
+ const restore=()=>{if(ids.length&&!window.confirm(t('Thay lựa chọn đang sửa bằng bản nháp đã lưu?')))return;setBudget(String(saved.budget));setEnergy(saved.energy);setIds([...saved.ids]);setOpen(true);setSavedNotice(false);};
+ const restoreAccount=()=>{if(!accountPlan)return;if(ids.length&&!window.confirm(en?'Replace the current choices with the account-saved plan?':'Thay lựa chọn đang sửa bằng kế hoạch đã lưu trên tài khoản?'))return;setBudget(String(accountPlan.budget));setEnergy(accountPlan.energy);setIds([...accountPlan.habitIds]);setOpen(true);setAccountConflict(false);setSavedNotice(false);};
+ const discard=()=>{if(!window.confirm(t('Xóa bản nháp kế hoạch tập trung trên trình duyệt này?')))return;try{removeDailyFocusDraft(sessionStorage,owner);setSaved(null);setStorageError(false);setSavedNotice(false);}catch{setStorageError(true);}};
+ const prepare=event=>{if(!saveDraft())event.preventDefault();};
+ const available=focusHabits(habits);let plan=null,error=false;
+ if(ids.length){try{plan=dailyFocusPlan(budget,energy,ids,habits);}catch{error=true;}}
+ const progressDraft=accountPlan?dailyFocusAccountDraft(accountPlan,today):saved;
+ const saveAccount=async()=>{if(accountSaveLock.current)return;let body;try{body=dailyFocusAccountPayload(budget,energy,ids,habits,accountPlan?.version??0);}catch{setAccountError(true);return;}accountSaveLock.current=true;setAccountBusy(true);setAccountError(false);setAccountConflict(false);try{const {data}=await api.put('/daily-focus-plans',body);setAccountPlan(readDailyFocusAccount(data,today));try{const value=writeDailyFocusDraft(sessionStorage,owner,{version:1,date:today,budget,energy,ids});setSaved(value);setStorageError(false);setSavedNotice(true);}catch{setStorageError(true);} }catch(failure){if(failure.response?.status===409)setAccountConflict(true);else setAccountError(true);}finally{accountSaveLock.current=false;setAccountBusy(false);}};
+ const toggle=id=>{setSavedNotice(false);setIds(values=>values.includes(id)?values.filter(value=>value!==id):values.length<3?[...values,id]:values);};
+ return <div id="multi-focus-plan" style={{borderTop:'1px solid var(--border-color)',paddingTop:'1rem',marginTop:'1rem'}}>
+  <h3>{t('Chia thời gian cho nhiều thói quen')}</h3><p>{t('Chọn tối đa ba việc theo thứ tự ưu tiên. Kế hoạch dùng quy tắc thời gian, chưa dùng AI.')}</p>
+  <button className="btn btn-secondary" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>{t(open?'Ẩn kế hoạch nhiều phiên':'Lập kế hoạch nhiều phiên')}</button>
+  {open&&accountLoading&&<p role="status">{en?'Loading today’s account plan…':'Đang tải kế hoạch hôm nay trên tài khoản…'}</p>}
+  {open&&accountError&&<div role="alert"><p>{en?'The account plan could not be verified. Your local choices have not changed.':'Chưa xác minh được kế hoạch trên tài khoản. Lựa chọn trên thiết bị không thay đổi.'}</p><button className="btn btn-secondary btn-sm" disabled={accountLoading||accountBusy} onClick={loadAccount}>{t('Tải lại')}</button></div>}
+  {open&&accountConflict&&<div role="alert"><p>{en?'This account plan changed on another device. Reload it before saving again.':'Kế hoạch trên tài khoản đã đổi ở thiết bị khác. Hãy tải lại trước khi lưu tiếp.'}</p><button className="btn btn-secondary btn-sm" disabled={accountLoading||accountBusy} onClick={loadAccount}>{en?'Reload account plan':'Tải lại kế hoạch tài khoản'}</button></div>}
+  {open&&accountPlan&&<div role="status" style={{marginTop:'1rem'}}><p>{en?`A plan for today is saved to your account (v${accountPlan.version}).`:`Đã có kế hoạch hôm nay lưu trên tài khoản (v${accountPlan.version}).`}</p><button className="btn btn-secondary btn-sm" disabled={accountBusy} onClick={restoreAccount}>{en?'Use account plan':'Dùng kế hoạch tài khoản'}</button></div>}
+  {saved&&<div role="status" style={{marginTop:'1rem'}}><p>{t('Có bản nháp ngày {date} với {count} việc đã chọn.',{date:saved.date,count:saved.ids.length})}</p>{saved.date!==today&&<p>{t('Bản nháp thuộc ngày khác. Kiểm tra lại lựa chọn cho hôm nay trước khi lưu hoặc bắt đầu phiên.')}</p>}<div style={{display:'flex',flexWrap:'wrap',gap:'0.75rem'}}><button className="btn btn-secondary btn-sm" onClick={restore}>{t(saved.date===today?'Khôi phục lựa chọn đã lưu':'Dùng lại lựa chọn cho hôm nay')}</button><button className="btn btn-ghost btn-sm" onClick={discard}>{t('Xóa bản nháp')}</button></div></div>}
+  {progressDraft&&<DailyFocusProgress draft={progressDraft} source={accountPlan?'account':'browser'} habits={habits} today={today} timezone={timezone}/>}
+  {storageError&&<div role="alert"><p>{t('Chưa đọc hoặc lưu được bản nháp. Kiểm tra lựa chọn và quyền lưu trữ của trình duyệt; chưa mở phiên mới.')}</p><button className="btn btn-secondary btn-sm" onClick={discard}>{t('Xóa bản nháp')}</button></div>}
+  {savedNotice&&<p role="status">{t('Đã lưu bản nháp trong tab này. Có thể quay lại sau khi mở Pomodoro; chưa đồng bộ lên tài khoản.')}</p>}
+  {open&&<div style={{marginTop:'1rem'}}>
+   <label className="form-label" htmlFor="daily-focus-budget">{t('Tổng thời gian rảnh, gồm cả nghỉ')}</label><input id="daily-focus-budget" className="form-input" type="number" min="5" max="240" step="1" value={budget} onChange={event=>{setBudget(event.target.value);setSavedNotice(false);}}/>
+   <label className="form-label" htmlFor="daily-focus-energy">{t('Năng lượng hiện tại')}</label><select id="daily-focus-energy" className="form-select" value={energy} onChange={event=>{setEnergy(event.target.value);setSavedNotice(false);}}>{[['LOW','Thấp'],['MEDIUM','Vừa'],['HIGH','Cao']].map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}</select>
+   <fieldset style={{border:0,padding:0,margin:'1rem 0'}}><legend>{t('Chọn việc theo thứ tự bạn muốn làm')}</legend>{available.map(habit=><label key={habit.id} style={{display:'flex',alignItems:'center',gap:'0.75rem',minHeight:'44px',overflowWrap:'anywhere'}}><input type="checkbox" checked={ids.includes(habit.id)} disabled={!ids.includes(habit.id)&&ids.length>=3} onChange={()=>toggle(habit.id)}/>{ids.includes(habit.id)?(ids.indexOf(habit.id)+1)+'. ':''}{habit.name}</label>)}</fieldset>
+   {!available.length&&<p>{t('Không còn thói quen chưa hoàn thành hôm nay để chia phiên.')}</p>}
+   {ids.some(id=>!available.some(row=>row.id===id))&&<button className="btn btn-secondary btn-sm" onClick={()=>setIds(values=>values.filter(id=>available.some(row=>row.id===id)))}>{t('Bỏ các thói quen không còn phù hợp')}</button>}
+   {error&&<p role="alert">{t('Nhập 5–240 phút và chọn lại các thói quen chưa hoàn thành.')}</p>}
+   {plan&&<><div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap'}}><button className="btn btn-secondary btn-sm" onClick={saveDraft}>{t('Lưu bản nháp kế hoạch')}</button><button className="btn btn-primary btn-sm" disabled={accountBusy||accountLoading} onClick={saveAccount}>{accountBusy?(en?'Saving to account…':'Đang lưu lên tài khoản…'):(en?'Save plan to account':'Lưu kế hoạch vào tài khoản')}</button></div><DailyFocusCoach budget={budget} energy={energy} ids={ids} habits={habits} disabled={accountBusy||accountLoading} onApply={priority=>{setIds(priority);setSavedNotice(false);}}/><h4>{t('Kế hoạch đề xuất')}</h4>
+    {plan.smallStep?<><p>{t('Thử {name} trong {minutes} phút; quỹ thời gian chưa đủ cho phiên Pomodoro 25 phút.',{name:plan.smallStep.name,minutes:plan.smallStep.minutes})}</p><Link onClick={prepare} className="btn btn-secondary btn-sm" to={habitPath('/',plan.smallStep.id)+'#today-habits'}>{t('Mở đúng thói quen hôm nay')}</Link></>:<ol style={{paddingLeft:'1.25rem'}}>{plan.sessions.map(row=><li key={row.id} style={{margin:'1rem 0',overflowWrap:'anywhere'}}>{row.breakBefore>0&&<p>{t('Nghỉ {minutes} phút trước phiên này',{minutes:row.breakBefore})}</p>}<p>{row.name} · {t('{count} phút',{count:row.minutes})}</p><Link onClick={prepare} className="btn btn-primary btn-sm" to={focusLink(row.minutes,row.id)}>{t('Chuẩn bị phiên này')}</Link></li>)}</ol>}
+    <p>{t('{focus} phút tập trung · {rest} phút nghỉ · {unused} phút chưa phân bổ',{focus:plan.focusMinutes,rest:plan.breakMinutes,unused:plan.unusedMinutes})}</p>
+    {plan.unallocated.length>0&&<p>{t('Chưa đủ thời gian cho: {names}',{names:plan.unallocated.map(row=>row.name).join(', ')})}</p>}
+    <p>{en?'This only allocates time; it does not start a session, check in or add progress. The browser draft is saved when you choose Save draft or prepare a session; saving to the account makes the selection available on your other signed-in devices.':'Đây là phân bổ thời gian, không tự bắt đầu phiên, check-in hay cộng tiến độ. Bản nháp trình duyệt được lưu khi bạn chọn lưu hoặc chuẩn bị phiên; lưu vào tài khoản giúp dùng lại lựa chọn trên thiết bị khác đã đăng nhập.'}</p>
+   </>}
+  </div>}
+ </div>;
+}

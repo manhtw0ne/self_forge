@@ -30,3 +30,11 @@ test('failed persistence prevents sending a request', async () => {
   await assert.rejects(requestPomodoroStart({ getItem: () => null, setItem() { throw new Error('quota'); } }, 1, null, async () => { calls++; }, () => uuid));
   assert.equal(calls, 0);
 });
+
+test('custom duration survives retry with immutable request and invalid new durations send nothing',async()=>{
+ const storage=memory();let sent;
+ await assert.rejects(requestPomodoroStart(storage,1,7,async p=>{sent=p;throw Error('network');},()=>uuid,60));
+ await requestPomodoroStart(storage,1,9,async p=>{assert.deepEqual(p,sent);return {id:4};},()=>uuid,25);
+ assert.equal(readPendingStart(storage,1).durationMinutes,60);
+ let calls=0;for(const duration of [24,121,30.5])await assert.rejects(requestPomodoroStart(memory(),1,null,async()=>calls++,()=>uuid,duration));assert.equal(calls,0);
+});

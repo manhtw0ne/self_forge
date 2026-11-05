@@ -1,0 +1,11 @@
+# Overrides applied when @ActiveProfiles("test") is used.
+# Excludes auto-configurations that require real network access and would fail
+# inside a sandboxed build environment (no loopback / network available in CI
+# sandbox).  RestClientAutoConfiguration tries to build an HttpClient during
+# context startup and immediately fails with "Unable to establish loopback
+# connection" when network is blocked.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration
+

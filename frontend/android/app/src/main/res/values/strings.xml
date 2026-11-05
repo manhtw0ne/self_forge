@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SelfForge</string>
+    <string name="title_activity_main">SelfForge</string>
+    <string name="package_name">com.selfforge.app</string>
+    <string name="custom_url_scheme">com.selfforge.app</string>
+</resources>

@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readEditableMood,moodEditPayload,moodDeletePayload} from './moodEdit.js';
+const source={id:1,date:'2026-10-15',score:3,note:'Old',emoji:'😐',email:'PRIVATE'};
+test('mood editor freezes exact source and preserves whitespace without private account fields',()=>{const value=moodEditPayload(source,{score:'4',note:' New '});assert.deepEqual(value,{date:source.date,score:4,note:' New ',emoji:'😊',expected:{id:1,score:3,note:'Old',emoji:'😐'}});assert.equal(readEditableMood(source,source.date).email,undefined);});
+test('mood editor rejects another date, invalid score and oversized notes',()=>{assert.throws(()=>readEditableMood(source,'2026-10-14'));for(const form of [{score:0,note:''},{score:6,note:''},{score:4,note:'x'.repeat(256)}])assert.throws(()=>moodEditPayload(source,form));});
+
+test('mood deletion freezes the exact stored emoji and note without applying edit normalization',()=>{const saved={...source,emoji:'legacy emoji'};const payload=moodDeletePayload(saved);saved.note='Changed';assert.deepEqual(payload,{date:source.date,expected:{id:1,score:3,note:'Old',emoji:'legacy emoji'}});assert.throws(()=>moodDeletePayload({...source,id:0}));});

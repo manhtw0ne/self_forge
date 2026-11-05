@@ -23,21 +23,20 @@ Docker build tự build frontend và chạy test backend. Không dùng JAR có b
 
 ## Cổng kiểm thử tự động trước deploy
 
-Cập nhật 24/09/2026: push main kích hoạt workflow Deploy, gọi lại .github/workflows/ci.yml qua workflow_call. Job deploy có needs: verify, nên khi Verify lỗi, bị hủy hoặc không hoàn tất thành công, deploy không chạy.
+Cập nhật 04/11/2026 — phần này mô tả **cấu hình đang có trong repository**, không phải bằng chứng rằng bất kỳ nền tảng production nào đã nhận release.
 
-Verify gồm npm ci, lint, 8 test frontend hiện có, build, đồng bộ static bundle và mvn -B -Ppostgres-tests verify (có PostgreSQL tạm). Báo cáo Surefire/Failsafe được lưu dưới artifact test-reports trong 7 ngày, kể cả khi test thất bại.
+- [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) chạy với mọi `push` và `pull_request`, đồng thời có thể được gọi lại bằng `workflow_call`. Nó cài dependency frontend, chạy lint/test/build, copy bundle mới vào static resources, chạy `mvn -B -Ppostgres-tests verify`, build Docker image `selfforge:release-check`, chạy smoke production cô lập, và lưu Surefire/Failsafe reports trong 7 ngày.
+- [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) hiện là **Manual legacy Fly.io deployment**: chỉ chạy khi người vận hành chọn `workflow_dispatch`. Job `Deploy SelfForge` chỉ chạy sau `Verify release` thành công và chỉ nhận `FLY_API_TOKEN` ở bước `flyctl deploy --remote-only`. Workflow không tự deploy khi push vào `main`; release đang chạy không bị hủy bởi concurrency setting.
+- [`fly.toml`](../fly.toml) vẫn xác nhận workflow GitHub deploy đang nhắm Fly.io. [`render.yaml`](../render.yaml) bổ sung mô tả Render Blueprint cho chính dịch vụ web beta: Dockerfile, health check và các biến production không bí mật. Blueprint cố ý **không** tạo PostgreSQL, không có plan/cost cố định và không chứa secret; `DATABASE_URL`, `DATABASE_USERNAME` và `DATABASE_PASSWORD` phải được cung cấp trong Render Dashboard bằng JDBC URL hợp lệ.
 
-Pull request và push nhánh khác vẫn chạy Verify độc lập. Push main không chạy thêm một Verify độc lập trùng lặp. Các job kiểm thử và deploy của cùng workflow checkout cùng commit của sự kiện push; không dùng workflow_run để lấy nhầm đầu nhánh mới hơn.
+Trước một release thủ công qua workflow trên:
 
-Concurrency ở toàn workflow deploy giữ release đang chạy không bị hủy giữa chừng; GitHub có thể thay thế run còn chờ bằng push mới hơn. Timeout Verify 25 phút, deploy 20 phút. Secret FLY_API_TOKEN chỉ được đưa vào bước deploy, không truyền cho workflow kiểm thử.
+1. Chọn đúng commit/branch trong GitHub Actions và xác nhận `Verify release` xanh; nếu lỗi, dừng và tải `test-reports` để xử lý.
+2. Chỉ chạy `Deploy SelfForge` khi môi trường đích thật sự là Fly.io và `FLY_API_TOKEN` đã cấu hình trong GitHub secret. Không gửi token vào chat hoặc commit.
+3. Với Render, review `render.yaml` trước khi sync — đặc biệt service name, public origin và database đích. Blueprint sync có thể thay đổi cấu hình một service Render cùng tên; không sync thẳng vào production khi chưa có staging/backup. Sau deploy, xác nhận health, version/image digest và smoke test trên URL staging/production.
+4. Thiết lập branch protection riêng trên GitHub nếu muốn bắt buộc checks trước merge; tên required check phải khớp job/run thực tế.
 
-Kiểm tra sau khi push lần tới:
-1. Trong GitHub Actions, Verify release phải thành công trước Deploy SelfForge.
-2. Nếu test lỗi, Deploy SelfForge phải hiện skipped; tải test-reports để xem lỗi.
-3. Nếu Verify qua nhưng deploy lỗi thiếu token/quyền Fly, cấu hình GitHub Actions secret FLY_API_TOKEN với token phù hợp cho app. Không gửi token vào chat hoặc commit.
-4. Branch protection của main vẫn cần cấu hình ở GitHub nếu muốn bắt buộc PR qua kiểm thử trước merge. Job names trong required checks cần khớp run thực tế.
-
-Cấu hình đã qua actionlint local; chưa xác minh một run GitHub Actions từ thay đổi này và chưa deploy. Cổng tự động không thay thế checklist staging, backup và smoke test bên dưới.
+Cổng tự động và Blueprint không thay thế checklist staging, backup và smoke test bên dưới. Chưa có GitHub Actions run, Blueprint sync hay deployment production nào được xác minh chỉ bằng nội dung file này.
 
 ## Database và secrets
 

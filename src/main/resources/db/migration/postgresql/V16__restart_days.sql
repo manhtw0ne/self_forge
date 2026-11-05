@@ -1,0 +1,8 @@
+CREATE TABLE restart_days (
+ user_id BIGINT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+ plan_version BIGINT NOT NULL CHECK (plan_version > 0),
+ revision BIGINT NOT NULL CHECK (revision >= 0),
+ day_one BOOLEAN NOT NULL DEFAULT FALSE,
+ day_two BOOLEAN NOT NULL DEFAULT FALSE,
+ day_three BOOLEAN NOT NULL DEFAULT FALSE
+);

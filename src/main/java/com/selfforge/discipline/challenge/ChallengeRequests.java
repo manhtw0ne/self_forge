@@ -18,7 +18,8 @@ public final class ChallengeRequests {
             @jakarta.validation.constraints.Size(max = 255) String description,
             LocalDate startDate,
             @Min(1) @Max(365) Integer targetDays,
-            java.util.UUID requestId
+            java.util.UUID requestId,
+            @Min(1) @Max(365) Integer windowDays
     ) {
     }
 

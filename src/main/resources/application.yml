@@ -29,10 +29,126 @@ spring:
 
 server:
   port: 8080
+  tomcat:
+    connection-timeout: 30000
+  servlet:
+    # Reject any request body larger than 32 KB – no endpoint needs more.
+    multipart:
+      max-request-size: 32KB
+      max-file-size: 1MB
+
+logging:
+  pattern:
+    # Enables support to match a reported response ID with a server log line.
+    level: "%5p [req:%X{requestId:-}]"
 
 app:
+  # Used only in account-security emails. Set the exact public web origin on deployment.
+  public-url: ${APP_PUBLIC_URL:}
+  legal:
+    terms-version: ${APP_TERMS_VERSION:2026-10-28}
+  oauth:
+    # Keep both disabled until the matching provider console and exact redirect URL are configured.
+    google:
+      enabled: ${GOOGLE_OAUTH_ENABLED:false}
+      client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+      client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_OAUTH_REDIRECT_URI:}
+    facebook:
+      enabled: ${FACEBOOK_OAUTH_ENABLED:false}
+      client-id: ${FACEBOOK_OAUTH_CLIENT_ID:}
+      client-secret: ${FACEBOOK_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${FACEBOOK_OAUTH_REDIRECT_URI:}
+  ai:
+    weekly:
+      # Disabled by default. Configure a server-side OpenAI-compatible key to enable it.
+      enabled: ${AI_WEEKLY_ENABLED:false}
+      api-key: ${AI_WEEKLY_API_KEY:}
+      model: ${AI_WEEKLY_MODEL:gpt-4o-mini}
+      endpoint: ${AI_WEEKLY_ENDPOINT:https://api.openai.com/v1/chat/completions}
+      monthly-limit: ${AI_WEEKLY_MONTHLY_LIMIT:4}
+    goal:
+      # Disabled by default. It may reuse the weekly provider credentials when explicitly enabled.
+      enabled: ${AI_GOAL_ENABLED:false}
+      api-key: ${AI_GOAL_API_KEY:${AI_WEEKLY_API_KEY:}}
+      model: ${AI_GOAL_MODEL:${AI_WEEKLY_MODEL:gpt-4o-mini}}
+      endpoint: ${AI_GOAL_ENDPOINT:${AI_WEEKLY_ENDPOINT:https://api.openai.com/v1/chat/completions}}
+      monthly-limit: ${AI_GOAL_MONTHLY_LIMIT:3}
+    restart:
+      # Disabled by default. It may reuse the weekly provider credentials when explicitly enabled.
+      enabled: ${AI_RESTART_ENABLED:false}
+      api-key: ${AI_RESTART_API_KEY:${AI_WEEKLY_API_KEY:}}
+      model: ${AI_RESTART_MODEL:${AI_WEEKLY_MODEL:gpt-4o-mini}}
+      endpoint: ${AI_RESTART_ENDPOINT:${AI_WEEKLY_ENDPOINT:https://api.openai.com/v1/chat/completions}}
+      monthly-limit: ${AI_RESTART_MONTHLY_LIMIT:3}
+    journal:
+      # Disabled by default. Journal contents are sent only after separate, per-request consent.
+      enabled: ${AI_JOURNAL_ENABLED:false}
+      api-key: ${AI_JOURNAL_API_KEY:${AI_WEEKLY_API_KEY:}}
+      model: ${AI_JOURNAL_MODEL:${AI_WEEKLY_MODEL:gpt-4o-mini}}
+      endpoint: ${AI_JOURNAL_ENDPOINT:${AI_WEEKLY_ENDPOINT:https://api.openai.com/v1/chat/completions}}
+      monthly-limit: ${AI_JOURNAL_MONTHLY_LIMIT:4}
+    daily-focus:
+      # Disabled by default. The provider receives only explicitly selected habits, time and energy.
+      enabled: ${AI_DAILY_FOCUS_ENABLED:false}
+      api-key: ${AI_DAILY_FOCUS_API_KEY:${AI_WEEKLY_API_KEY:}}
+      model: ${AI_DAILY_FOCUS_MODEL:${AI_WEEKLY_MODEL:gpt-4o-mini}}
+      endpoint: ${AI_DAILY_FOCUS_ENDPOINT:${AI_WEEKLY_ENDPOINT:https://api.openai.com/v1/chat/completions}}
+      monthly-limit: ${AI_DAILY_FOCUS_MONTHLY_LIMIT:3}
+    chat:
+      # Disabled by default. This is a bounded habit Q&A, not an autonomous chat agent.
+      enabled: ${AI_CHAT_ENABLED:false}
+      api-key: ${AI_CHAT_API_KEY:${AI_WEEKLY_API_KEY:}}
+      model: ${AI_CHAT_MODEL:${AI_WEEKLY_MODEL:gpt-4o-mini}}
+      endpoint: ${AI_CHAT_ENDPOINT:${AI_WEEKLY_ENDPOINT:https://api.openai.com/v1/chat/completions}}
+      monthly-limit: ${AI_CHAT_MONTHLY_LIMIT:3}
+  companion:
+    enabled: ${COMPANION_ENABLED:true}
+  feedback:
+    # Authenticated beta feedback is intentionally bounded per account so it cannot become a spam channel.
+    daily-limit: ${FEEDBACK_DAILY_LIMIT:5}
+    # Optional operator inbox. It receives only the report fields a user explicitly submits;
+    # delivery failures never reject or discard saved feedback.
+    notify-to: ${FEEDBACK_NOTIFY_TO:}
+  beta-metrics:
+    # Leave blank to keep the aggregate operator report disabled. This key is
+    # never sent to the browser and the response contains no user-level data.
+    key: ${BETA_METRICS_KEY:}
+  email:
+    provider: ${EMAIL_PROVIDER:smtp}
+    resend-api-key: ${RESEND_API_KEY:}
+  email-request-limit:
+    # These apply to every process through the database-backed limiter.
+    window-seconds: ${EMAIL_REQUEST_WINDOW_SECONDS:60}
+    per-email-limit: ${EMAIL_REQUEST_PER_EMAIL_LIMIT:3}
+    global-limit: ${EMAIL_REQUEST_GLOBAL_LIMIT:30}
+    # A separate device/network budget prevents rotating many addresses to send mail.
+    per-client-limit: ${EMAIL_REQUEST_PER_CLIENT_LIMIT:8}
+    retention-seconds: ${EMAIL_REQUEST_RETENTION_SECONDS:7200}
+  client-address:
+    # Enable only behind a trusted proxy that strips client-provided forwarded headers.
+    trust-forwarded-header: ${TRUST_FORWARDED_CLIENT_ADDRESS:false}
+  login-attempt-limit:
+    # Database-backed hashed scopes keep this protection across restarts and instances.
+    window-seconds: ${LOGIN_ATTEMPT_WINDOW_SECONDS:60}
+    per-email-limit: ${LOGIN_ATTEMPT_PER_EMAIL_LIMIT:10}
+    # Stops password spraying or account creation from one network using many emails.
+    per-client-limit: ${LOGIN_ATTEMPT_PER_CLIENT_LIMIT:30}
+    global-limit: ${LOGIN_ATTEMPT_GLOBAL_LIMIT:120}
+    retention-seconds: ${LOGIN_ATTEMPT_RETENTION_SECONDS:7200}
+  email-change-recovery:
+    cleanup-delay-ms: ${EMAIL_CHANGE_RECOVERY_CLEANUP_DELAY_MS:3600000}
+  auth-session:
+    # Expired session tokens are no longer usable immediately; this only keeps their table bounded.
+    cleanup-delay-ms: ${AUTH_SESSION_CLEANUP_DELAY_MS:3600000}
   registration:
     require-email-verification: ${REGISTRATION_REQUIRE_EMAIL_VERIFICATION:false}
+    # Leave blank for normal public sign-up. Set a high-entropy value only while
+    # running a closed beta; the value is never returned to the browser.
+    invite-code: ${BETA_INVITE_CODE:}
+    # Enables individually managed, single- or multi-use invitation codes.
+    # Codes are created only through the operator API and are stored as hashes.
+    managed-invites-enabled: ${BETA_MANAGED_INVITES_ENABLED:false}
   password-reset:
     enabled: ${PASSWORD_RESET_ENABLED:false}
     from: ${PASSWORD_RESET_FROM:}

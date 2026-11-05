@@ -9,7 +9,11 @@ public record UserResponse(
         String avatarUrl,
         String timezone,
         String motto,
+        String language,
+        boolean emailVerified,
         Instant createdAt,
+        Instant termsAcceptedAt,
+        String termsVersion,
         String premiumTier,
         boolean isPremium,
         Instant premiumExpiresAt
@@ -22,7 +26,11 @@ public record UserResponse(
                 user.getAvatarUrl(),
                 user.getTimezone(),
                 user.getMotto(),
+                user.getLanguage(),
+                user.getEmailVerifiedAt() != null,
                 user.getCreatedAt(),
+                user.getTermsAcceptedAt(),
+                user.getTermsVersion(),
                 user.getPremiumTier().name(),
                 user.isPremium(),
                 user.getPremiumExpiresAt()

@@ -1,0 +1,7 @@
+import {focusHistoryRange,focusHistoryPreset} from './focusHistoryRange.js';
+const key=owner=>{if(!Number.isSafeInteger(owner)||owner<1)throw Error('Invalid view owner');return 'sf_focus_history_view:'+owner;};
+export function focusView(value){if(!value||!['ALL','COMPLETED','INCOMPLETE'].includes(value.status)||!['EXACT','7','30','MONTH','ALL'].includes(value.kind))throw Error('Invalid focus view');const result={status:value.status,kind:value.kind};if(value.kind==='EXACT'){if(typeof value.fromDate!=='string'||typeof value.toDate!=='string')throw Error('Invalid fixed range');focusHistoryRange(value.fromDate,value.toDate,'9999-12-31');result.fromDate=value.fromDate;result.toDate=value.toDate;}return result;}
+export function resolveFocusView(value,today){const view=focusView(value),range=view.kind==='EXACT'?{fromDate:view.fromDate,toDate:view.toDate}:focusHistoryPreset(view.kind,today);return {status:view.status,...focusHistoryRange(range.fromDate,range.toDate,today)};}
+export function readFocusView(storage,owner){const raw=storage.getItem(key(owner));if(raw===null)return null;const value=JSON.parse(raw);if(value.version!==1)throw Error('Invalid view version');return focusView(value);}
+export function writeFocusView(storage,owner,value){storage.setItem(key(owner),JSON.stringify({version:1,...focusView(value)}));}
+export function removeFocusView(storage,owner){storage.removeItem(key(owner));}

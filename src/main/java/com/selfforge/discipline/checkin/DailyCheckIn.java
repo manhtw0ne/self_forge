@@ -42,15 +42,29 @@ public class DailyCheckIn {
     private Integer failurePointsSnapshot;
     private Integer appliedXp;
 
+    // Null for legacy check-ins: their original weekly schedule is unknown.
+    private Integer targetPerWeekSnapshot;
+
+    // Null for records created before weekday schedules were introduced.
+    @Column(name = "scheduled_days_snapshot", length = 27)
+    private String scheduledDaysSnapshot;
+
     protected DailyCheckIn() {
     }
 
     public DailyCheckIn(Habit habit, LocalDate date, CheckInStatus status, String note) {
+        this(habit, date, status, note, habit.getTargetPerWeek(), habit.getScheduledDays());
+    }
+
+    DailyCheckIn(Habit habit, LocalDate date, CheckInStatus status, String note,
+                 int target, String scheduledDays) {
         this.habit = habit;
         this.date = date;
         this.status = status;
         this.note = note;
         this.createdAt = Instant.now();
+        this.targetPerWeekSnapshot = target >= 1 && target <= 7 ? target : null;
+        this.scheduledDaysSnapshot = scheduledDays;
     }
 
     public Long getId() {
@@ -106,5 +120,7 @@ public class DailyCheckIn {
     public Integer getPointsSnapshot() { return pointsSnapshot; }
     public Integer getFailurePointsSnapshot() { return failurePointsSnapshot; }
     public Integer getAppliedXp() { return appliedXp; }
+    public Integer getTargetPerWeekSnapshot() { return targetPerWeekSnapshot; }
+    public String getScheduledDaysSnapshot() { return scheduledDaysSnapshot; }
     public void setAppliedXp(int appliedXp) { this.appliedXp = appliedXp; }
 }

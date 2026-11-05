@@ -1,3 +1,17 @@
+import WeekPlanFocusContext from '../components/WeekPlanFocusContext';
+import {readWeekPlanFocus} from '../utils/weekPlanFocus';
+import {changeBreakDuration} from '../utils/pomodoroBreak';
+import PomodoroAlarmSettings from '../components/PomodoroAlarmSettings';
+import {usePomodoroAlarm} from '../hooks/usePomodoroAlarm';
+import DailyFocusContinuation from '../components/DailyFocusContinuation';
+import FocusHabitFollowUp from '../components/FocusHabitFollowUp';
+import {useSearchParams} from 'react-router-dom';
+import {readFocusLink} from '../utils/focusPlan';
+import FocusSessionAction from '../components/FocusSessionAction';
+import {focusRecovery,readFocusSession,confirmFocusStart} from '../utils/focusRecovery';
+import PomodoroExport from '../components/PomodoroExport';
+import PomodoroHistory from '../components/PomodoroHistory';
+import PomodoroNote from '../components/PomodoroNote';
 import { requestPomodoroStart, readPendingStart, removePendingStart, InvalidPendingStart } from '../utils/pomodoroStart';
 import { readTimer, writeTimer } from '../utils/pomodoroTimer';
 import { useLanguage } from '../context/useLanguage';
@@ -34,33 +48,57 @@ function PomodoroTimer() {
   const [statsError, setStatsError] = useState(false);
   const [recentError, setRecentError] = useState(false);
   const [habitsError, setHabitsError] = useState(false);
+  const [searchParams]=useSearchParams();
+  const weekFocus=readWeekPlanFocus(searchParams.toString());
+  const focusLink=readFocusLink(searchParams.toString());
+  const [focusMinutes,setFocusMinutes]=useState(()=>{
+    try{return readPendingStart(window.sessionStorage,user.id)?.durationMinutes??restored.timer?.focusMinutes??25;}catch{return restored.timer?.focusMinutes??25;}
+  });
+  const [shortMinutes,setShortMinutes]=useState(restored.timer?.shortMinutes??5);
+  const [longMinutes,setLongMinutes]=useState(restored.timer?.longMinutes??15);
   const [mode, setMode] = useState(restored.timer?.mode ?? 0);
   const [secondsLeft, setSecondsLeft] = useState(restored.timer?.secondsLeft ?? MODES[0].minutes * 60);
   const [running, setRunning] = useState(restored.timer?.running ?? false);
   const [busy, setBusy] = useState(false);
+  const [lastCompleted,setLastCompleted]=useState(null);
   const [sessionId, setSessionId] = useState(restored.timer?.sessionId ?? null);
   const [habits, setHabits] = useState([]);
   const [selectedHabit, setSelectedHabit] = useState(restored.timer?.selectedHabit ?? '');
   const [todayStats, setTodayStats] = useState(null);
+  const [allHistory, setAllHistory] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState('ALL');
+  const [historyLimit, setHistoryLimit] = useState(8);
+  const noteStates = useRef(new Map());
+  const onNoteState = useCallback((id, state) => { if (state) noteStates.current.set(id, state); else noteStates.current.delete(id); }, []);
+  const changeHistory = action => {
+    const states = [...noteStates.current.values()];
+    if (states.some(state => state.saving)) return;
+    if (states.some(state => state.dirty) && !window.confirm(t('Đổi danh sách có thể đóng ghi chú chưa lưu. Tiếp tục?'))) return;
+    action();
+  };
   const [recentSessions, setRecentSessions] = useState([]);
   const intervalRef = useRef(null);
   const deadlineRef = useRef(restored.timer?.deadline ?? null);
   const requestInFlight = useRef(false);
   const toast = useToast();
+  const statsRequest = useRef(0);
+  useEffect(() => () => { statsRequest.current++; }, []);
 
   useEffect(() => {
     if (restored.error) return; // Preserve unreadable state for recovery, do not overwrite it.
     try {
-      writeTimer(window.sessionStorage, user.id, { mode, secondsLeft, running, sessionId, selectedHabit, deadline: deadlineRef.current });
+      writeTimer(window.sessionStorage, user.id, { mode, secondsLeft, running, sessionId, selectedHabit, focusMinutes, shortMinutes,longMinutes, deadline: deadlineRef.current });
       setStorageError(false);
     } catch { setStorageError(true); }
-  }, [mode, secondsLeft, running, sessionId, selectedHabit, user.id, restored.error]);
+  }, [mode, secondsLeft, running, sessionId, selectedHabit, focusMinutes,shortMinutes,longMinutes, user.id, restored.error]);
 
   const loadStats = useCallback(async () => {
+    const request = ++statsRequest.current;
     setDataLoading(true);
     const [stats, recent] = await Promise.allSettled([
       api.get('/pomodoro/today'), api.get('/pomodoro/recent'),
     ]);
+    if (request !== statsRequest.current) return;
     setStatsError(stats.status === 'rejected');
     setRecentError(recent.status === 'rejected');
     if (stats.status === 'fulfilled') setTodayStats(stats.value.data);
@@ -78,7 +116,7 @@ function PomodoroTimer() {
     void loadStats();
   }, [loadStats, loadHabits]);
 
-  const totalSeconds = MODES[mode].minutes * 60;
+  const totalSeconds = ([focusMinutes,shortMinutes,longMinutes][mode]) * 60;
   const progress = ((totalSeconds - secondsLeft) / totalSeconds) * 100;
   const displayMinutes = Math.floor(secondsLeft / 60);
   const displaySeconds = secondsLeft % 60;
@@ -86,35 +124,19 @@ function PomodoroTimer() {
   const switchMode = (idx) => {
     if (running || sessionId || pendingStart || requestInFlight.current) return;
     setMode(idx);
-    setSecondsLeft(MODES[idx].minutes * 60);
+    setSecondsLeft(([focusMinutes,shortMinutes,longMinutes][idx]) * 60);
     setSessionId(null);
   };
 
-  const playAlarm = useCallback(() => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const playBeep = (freq, time) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = freq;
-        gain.gain.value = 0.3;
-        osc.start(ctx.currentTime + time);
-        osc.stop(ctx.currentTime + time + 0.15);
-      };
-      playBeep(880, 0);
-      playBeep(880, 0.25);
-      playBeep(1100, 0.5);
-    } catch { /* ignore */ }
-  }, []);
+  const alarm=usePomodoroAlarm(user.id);
+  const playAlarm=alarm.play;
 
   const saveSession = useCallback(async (id) => {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
     setBusy(true);
     try {
-      await api.post(`/pomodoro/${id}/complete`, {});
+      const {data}=await api.post(`/pomodoro/${id}/complete`, {});const saved=readFocusSession(data,id);if(!saved.completed)throw Error('Incomplete session response');setLastCompleted(saved);
       setSessionId(null);
       toast.success(t("Đã ghi nhận phiên tập trung và 5 XP."));
       loadStats();
@@ -159,14 +181,16 @@ function PomodoroTimer() {
       if (MODES[mode].key === 'focus' && !sessionId) {
         setPendingStart(true);
         const res = await requestPomodoroStart(window.sessionStorage, user.id, selectedHabit ? parseInt(selectedHabit) : null,
-          payload => api.post('/pomodoro/start', payload));
+          payload => api.post('/pomodoro/start', payload),undefined,focusMinutes);
         const payload = readPendingStart(window.sessionStorage, user.id);
-        const restoredSeconds = Math.max(0, Math.min(totalSeconds, Math.ceil((Date.parse(res.data.startedAt) + payload.durationMinutes * 60000 - Date.now()) / 1000)));
+        confirmFocusStart(res.data,payload);
+        const restoredSeconds = Math.max(0, Math.min(payload.durationMinutes*60, Math.ceil((Date.parse(res.data.startedAt) + payload.durationMinutes * 60000 - Date.now()) / 1000)));
         const restoredDeadline = Date.now() + restoredSeconds * 1000;
-        writeTimer(window.sessionStorage, user.id, { mode: 0, secondsLeft: restoredSeconds, running: !res.data.completed && restoredSeconds > 0, sessionId: res.data.completed ? null : res.data.id, selectedHabit: String(payload.habitId ?? ''), deadline: restoredDeadline });
+        writeTimer(window.sessionStorage, user.id, { mode: 0, secondsLeft: restoredSeconds, running: !res.data.completed && restoredSeconds > 0, focusMinutes: payload.durationMinutes,shortMinutes,longMinutes, sessionId: res.data.completed ? null : res.data.id, selectedHabit: String(payload.habitId ?? ''), deadline: restoredDeadline });
         removePendingStart(window.sessionStorage, user.id);
         setPendingIssue(false);
         setPendingStart(false);
+        setFocusMinutes(payload.durationMinutes);
         setSelectedHabit(String(payload.habitId ?? ''));
         setSessionId(res.data.completed ? null : res.data.id);
         setSecondsLeft(restoredSeconds);
@@ -186,6 +210,23 @@ function PomodoroTimer() {
       setBusy(false);
     }
   };
+
+  const selectSavedSession=async(id,kind)=>{
+    if(requestInFlight.current||running||sessionId||pendingStart||restored.error)return;
+    requestInFlight.current=true;setBusy(true);
+    try{
+      const {data}=await api.get('/pomodoro/'+id);const session=readFocusSession(data,id);
+      const state=focusRecovery(session,kind);
+      if(kind==='REPEAT'&&session.habitId!==null&&!habits.some(h=>h.id===session.habitId)){
+        toast.error(t('Thói quen của phiên cũ không còn hoạt động. Chọn thói quen khác hoặc phiên tự do trước khi bắt đầu.'));return;
+      }
+      writeTimer(window.sessionStorage,user.id,{...state,shortMinutes,longMinutes});
+      setMode(0);setFocusMinutes(state.focusMinutes);setSecondsLeft(state.secondsLeft);setSessionId(state.sessionId);setSelectedHabit(state.selectedHabit);setRunning(false);deadlineRef.current=null;
+      toast.success(t(kind==='RESUME'?'Đã khôi phục đúng phiên. Tiếp tục bộ đếm hoặc thử lưu nếu đã hết giờ.':'Đã điền cấu hình phiên cũ. Bấm Bắt đầu để tạo phiên mới khi sẵn sàng.'));
+    }catch(failure){toast.error(t(failure.message==='Session status changed'?'Trạng thái phiên đã đổi. Tải lại lịch sử trước khi chọn.':'Chưa khôi phục được phiên. Bộ đếm hiện tại được giữ.'));void loadStats();}
+    finally{requestInFlight.current=false;setBusy(false);}
+  };
+  const recoveryBlocked=busy||running||Boolean(sessionId)||pendingStart||restored.error;
 
   const discardPending = () => {
     if (requestInFlight.current || !window.confirm(t('Bỏ yêu cầu cục bộ? Phiên có thể đã tồn tại trên server và sẽ không bị xóa. Kiểm tra lịch sử trước khi bắt đầu phiên mới.'))) return;
@@ -208,7 +249,7 @@ function PomodoroTimer() {
     if (sessionId && !window.confirm(t('Bỏ phiên đang giữ? Phiên này sẽ không được ghi nhận hoàn thành từ bộ đếm này.'))) return;
     setRunning(false);
     clearInterval(intervalRef.current);
-    setSecondsLeft(MODES[mode].minutes * 60);
+    setSecondsLeft(totalSeconds);
     setSessionId(null);
   };
 
@@ -223,21 +264,47 @@ function PomodoroTimer() {
       </div>
 
       {storageError && <p role="alert">{t('Không thể lưu hoặc khôi phục bộ đếm trên trình duyệt. Đừng tải lại trang khi đang tập trung.')}</p>}
+      {lastCompleted&&<><FocusHabitFollowUp session={lastCompleted}/><DailyFocusContinuation key={lastCompleted.id} owner={user.id} timezone={user.timezone} session={lastCompleted} habits={habits} locked={running||busy||Boolean(sessionId)||pendingStart||restored.error||habitsError} onRest={()=>switchMode(1)} onPrepare={row=>{if(requestInFlight.current||running||sessionId||pendingStart||restored.error||habitsError)return;setMode(0);setFocusMinutes(row.minutes);setSecondsLeft(row.minutes*60);setSelectedHabit(String(row.id));deadlineRef.current=null;}}/></>}
       {sessionId && !running && <p role="status">{t('Phiên tập trung đang được giữ. Tiếp tục hoặc thử lưu khi hết giờ; đặt lại sẽ bỏ phiên.')}</p>}
+      {sessionId&&<p><a href="#focus-timer">{t('Mở bộ đếm của phiên đang giữ')}</a></p>}
       {pendingStart && <p role="status">{t('Yêu cầu bắt đầu chưa được xác nhận. Thử lại để khôi phục đúng phiên; không tạo phiên mới.')}</p>}
       {pendingIssue && <div role="alert"><p>{t('Yêu cầu chờ không thể tiếp tục. Bạn có thể bỏ bản lưu cục bộ sau khi kiểm tra lịch sử phiên.')}</p><button className="btn btn-secondary" disabled={busy} onClick={discardPending}>{t('Bỏ yêu cầu cục bộ')}</button></div>}
+      <PomodoroAlarmSettings alarm={alarm}/>
       {/* Mode Selector */}
       <div className="filter-bar" style={{ justifyContent: 'center', marginBottom: '2rem' }}>
         {MODES.map((m, i) => (
           <button key={m.key} className={`filter-chip ${mode === i ? 'active' : ''}`}
             onClick={() => switchMode(i)} disabled={running || busy || !!sessionId || pendingStart}>
-            {t(m.label)} ({m.minutes}')
+            {t(m.label)} ({[focusMinutes,shortMinutes,longMinutes][i]}')
           </button>
         ))}
       </div>
 
+      <WeekPlanFocusContext key={searchParams.toString()} target={weekFocus} blocked={recoveryBlocked} onPrepare={minutes=>{if(requestInFlight.current||running||busy||sessionId||pendingStart||restored.error)return false;if(secondsLeft<totalSeconds&&secondsLeft>0&&!window.confirm(language==='en'?'Reset the paused timer to prepare this weekly step?':'Đặt lại bộ đếm đang tạm dừng để chuẩn bị bước tuần này?'))return false;setMode(0);setFocusMinutes(minutes);setSecondsLeft(minutes*60);setSelectedHabit('');deadlineRef.current=null;return true;}}/>
+      {mode===0&&<div style={{maxWidth:'360px',margin:'0 auto 1rem'}}>
+        <label className="form-label" htmlFor="focus-duration">{t('Thời lượng tập trung (phút)')}</label>
+        <select id="focus-duration" className="form-select" value={focusMinutes} disabled={running||busy||Boolean(sessionId)||pendingStart||restored.error} onChange={event=>{const minutes=Number(event.target.value);setFocusMinutes(minutes);setSecondsLeft(minutes*60);}}>
+          {[...new Set([25,45,60,90,120,focusMinutes])].sort((a,b)=>a-b).map(minutes=><option key={minutes} value={minutes}>{minutes}</option>)}
+        </select>
+        {focusLink&&!weekFocus&&<div style={{marginTop:'1rem'}}><p>{t('Phiên tập trung được đề xuất: {minutes} phút',{minutes:focusLink.minutes})}</p>
+          <button className="btn btn-secondary" disabled={running||busy||Boolean(sessionId)||pendingStart||restored.error||Boolean(focusLink.habitId)&&(habitsError||!habits.some(h=>h.id===focusLink.habitId))} onClick={()=>{setFocusMinutes(focusLink.minutes);setSecondsLeft(focusLink.minutes*60);setSelectedHabit(String(focusLink.habitId??''));}}>{t('Dùng đề xuất cho phiên này')}</button>
+          <p>{t('Chỉ điền lựa chọn. Bấm Bắt đầu khi bạn sẵn sàng.')}</p>
+        </div>}
+      </div>}
+      {mode!==0&&<section style={{maxWidth:'420px',margin:'0 auto 1rem'}}>
+        <label className="form-label" htmlFor="break-duration">{t('Thời lượng nghỉ (phút)')}</label>
+        <select id="break-duration" className="form-select" value={mode===1?shortMinutes:longMinutes} disabled={running||busy||Boolean(sessionId)||pendingStart||restored.error} onChange={event=>{
+          if(requestInFlight.current||running||sessionId||pendingStart||restored.error)return;
+          if(secondsLeft<totalSeconds&&secondsLeft>0&&!window.confirm(t('Đổi thời lượng sẽ đặt lại lượt nghỉ đang tạm dừng. Tiếp tục?')))return;
+          const next=changeBreakDuration(mode,Number(event.target.value),{shortMinutes,longMinutes});
+          setShortMinutes(next.shortMinutes);setLongMinutes(next.longMinutes);setSecondsLeft(next.secondsLeft);deadlineRef.current=null;
+        }}>
+          {[...new Set([...(mode===1?[1,3,5,10,15,20,30]:[5,10,15,20,30,45,60]),mode===1?shortMinutes:longMinutes])].sort((a,b)=>a-b).map(minutes=><option key={minutes} value={minutes}>{minutes}</option>)}
+        </select>
+        <p>{t('Lượt nghỉ chỉ chạy trên bộ đếm của tab này, không tạo phiên tập trung hoặc cộng XP. Thời lượng được giữ khi tải lại tab; báo âm phụ thuộc trình duyệt.')}</p>
+      </section>}
       {/* Timer Circle */}
-      <div className="pomodoro-timer-wrapper">
+      <div className="pomodoro-timer-wrapper" id="focus-timer">
         <div className="pomodoro-circle">
           <svg width="300" height="300" viewBox="0 0 300 300">
             <circle cx="150" cy="150" r="140" fill="none" stroke="var(--bg-input)" strokeWidth="6" />
@@ -307,31 +374,47 @@ function PomodoroTimer() {
         </div>
       </div>
 
+      <div style={{ marginTop: '1.5rem' }}>
+        {!allHistory && <button className="btn btn-secondary" onClick={() => changeHistory(() => setAllHistory(true))}>{t('Xem toàn bộ lịch sử Pomodoro')}</button>}
+        {allHistory && <PomodoroHistory user={user} onSelectSession={selectSavedSession} recoveryBlocked={recoveryBlocked} onClose={() => { setAllHistory(false); void loadStats(); }} />}
+      </div>
       {/* Recent Sessions */}
-      {!dataLoading && !recentError && recentSessions.length === 0 && <p>{t('Chưa có phiên nào.')}</p>}
-      {!recentError && recentSessions.length > 0 && (
+      {!allHistory && !dataLoading && !recentError && recentSessions.length === 0 && <p>{t('Chưa có phiên nào.')}</p>}
+      {!allHistory && !recentError && recentSessions.length > 0 && (
         <div className="card" style={{ marginTop: '1.5rem' }}>
           <div className="card-header">
             <span className="card-title">{t("📋 Phiên gần đây")}</span>
           </div>
+          <p>{t('Danh sách gồm tối đa 20 phiên gần nhất theo múi giờ tài khoản.')}</p>
+          <label className="form-label" htmlFor="pomodoro-history-filter">{t('Lọc phiên tập trung')}</label>
+          <select id="pomodoro-history-filter" className="form-select" style={{ marginBottom: '1rem' }} value={historyFilter} onChange={event => {
+            const value = event.target.value;
+            changeHistory(() => { setHistoryFilter(value); setHistoryLimit(8); });
+          }}><option value="ALL">{t('Tất cả')}</option><option value="COMPLETED">{t('Đã hoàn thành')}</option><option value="INCOMPLETE">{t('Chưa hoàn thành')}</option></select>
+          {recentSessions.filter(s => historyFilter === 'ALL' || (historyFilter === 'COMPLETED' ? s.completed : !s.completed)).length === 0 && <p role="status">{t('Không có phiên phù hợp với bộ lọc.')}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {recentSessions.slice(0, 8).map(s => (
-              <div key={s.id} className="habit-item" style={{ padding: '0.75rem 1rem' }}>
+            {recentSessions.filter(s => historyFilter === 'ALL' || (historyFilter === 'COMPLETED' ? s.completed : !s.completed)).slice(0, historyLimit).map(s => (
+              <div key={s.id} className="habit-item" style={{ padding: '0.75rem 1rem', flexWrap: 'wrap', alignItems: 'flex-start', gap: '0.75rem' }}>
                 <div className="habit-info">
                   <div className="habit-name" style={{ fontSize: '0.85rem' }}>
                     {s.habitName || t('Phiên tự do')} — {t('{count} phút', { count: s.durationMinutes })}
                   </div>
                   <div className="habit-meta">
                     <span>{new Date(s.startedAt).toLocaleString(language === 'en' ? 'en-US' : 'vi-VN', { timeZone: profileTimezone(user?.timezone) })}</span>
-                    {s.note && <span>📝 {s.note}</span>}
+
                   </div>
                 </div>
+                <FocusSessionAction session={s} onSelect={selectSavedSession} disabled={recoveryBlocked||habitsError}/>
+                <PomodoroExport session={s} timezone={user.timezone} disabled={busy || dataLoading} />
+                {s.completed && <PomodoroNote userId={user.id} onStateChange={onNoteState} session={s} onSaved={updated => { setRecentSessions(rows => rows.map(row => row.id === updated.id ? updated : row)); void loadStats(); }} />}
                 <span className={`badge ${s.completed ? 'badge-success' : 'badge-warning'}`}>
                   {t(s.completed ? '✓ Xong' : 'Chưa hoàn thành')}
                 </span>
               </div>
             ))}
           </div>
+          {recentSessions.filter(s => historyFilter === 'ALL' || (historyFilter === 'COMPLETED' ? s.completed : !s.completed)).length > historyLimit && <button className="btn btn-secondary btn-sm" style={{ marginTop: '1rem' }} onClick={() => setHistoryLimit(limit => limit + 8)}>{t('Xem thêm phiên')}</button>}
+          {historyLimit > 8 && <button className="btn btn-secondary btn-sm" style={{ marginTop: '1rem', marginLeft: '0.5rem' }} onClick={() => changeHistory(() => setHistoryLimit(8))}>{t('Thu gọn')}</button>}
         </div>
       )}
     </div>

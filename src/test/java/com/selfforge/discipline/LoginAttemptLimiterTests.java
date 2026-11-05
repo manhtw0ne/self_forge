@@ -16,7 +16,8 @@ class LoginAttemptLimiterTests {
         var service = mock(com.selfforge.discipline.auth.AuthService.class);
         var limiter = new LoginAttemptLimiter(Clock.systemUTC());
         var controller = new com.selfforge.discipline.auth.AuthController(service,
-                mock(com.selfforge.discipline.auth.CurrentUserService.class), limiter);
+                mock(com.selfforge.discipline.auth.CurrentUserService.class), limiter,
+                new com.selfforge.discipline.auth.ClientAddressResolver(false));
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new com.selfforge.discipline.common.ApiExceptionHandler()).build();
         for (int i = 0; i < 10; i++) limiter.acquire("user@example.com");
@@ -49,6 +50,14 @@ class LoginAttemptLimiterTests {
         var limiter = new LoginAttemptLimiter(Clock.systemUTC());
         for (int i = 0; i < 120; i++) limiter.acquire(i + "@example.com");
         assertThrows(ResponseStatusException.class, () -> limiter.acquire("new@example.com"));
+    }
+
+    @Test
+    void rotatingEmailsCannotBypassClientBudget() {
+        var limiter = new LoginAttemptLimiter(Clock.systemUTC());
+        for (int i = 0; i < 30; i++) limiter.acquire(i + "@example.com", "203.0.113.7");
+        assertThrows(ResponseStatusException.class, () -> limiter.acquire("new@example.com", "203.0.113.7"));
+        assertDoesNotThrow(() -> limiter.acquire("new@example.com", "203.0.113.8"));
     }
 
     @Test

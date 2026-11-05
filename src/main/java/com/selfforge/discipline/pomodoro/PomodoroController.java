@@ -51,9 +51,40 @@ public class PomodoroController {
                 request != null ? request.note() : null);
     }
 
+    public record NoteRequest(@jakarta.validation.constraints.NotNull @Size(max = 255) String note, @Size(max = 255) String expectedNote) {}
+
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/note")
+    public PomodoroResponse updateNote(@PathVariable Long id, @Valid @RequestBody NoteRequest request,
+            HttpServletRequest servletRequest) {
+        return pomodoroService.updateNote(currentUserService.requireUser(servletRequest), id, request.note(), request.expectedNote());
+    }
+
+    @GetMapping("/{id}")
+    public PomodoroResponse getSession(@PathVariable Long id, HttpServletRequest servletRequest) {
+        return pomodoroService.getSession(currentUserService.requireUser(servletRequest), id);
+    }
+
+    @GetMapping("/history")
+    public PomodoroService.HistoryPage history(@org.springframework.web.bind.annotation.RequestParam(required = false) Long beforeId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Boolean completed, @org.springframework.web.bind.annotation.RequestParam(required = false) String q,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate fromDate,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate toDate, HttpServletRequest servletRequest) {
+        return pomodoroService.history(currentUserService.requireUser(servletRequest), beforeId, completed, q, fromDate, toDate);
+    }
+
     @GetMapping("/recent")
     public List<PomodoroResponse> recent(HttpServletRequest servletRequest) {
         return pomodoroService.listRecent(currentUserService.requireUser(servletRequest));
+    }
+
+    @GetMapping("/day/evidence")
+    public PomodoroService.TodayEvidence dayEvidence(@org.springframework.web.bind.annotation.RequestParam @org.springframework.format.annotation.DateTimeFormat(iso=org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date, HttpServletRequest servletRequest) {
+        return pomodoroService.dayEvidence(currentUserService.requireUser(servletRequest), date);
+    }
+
+    @GetMapping("/today/evidence")
+    public PomodoroService.TodayEvidence todayEvidence(HttpServletRequest servletRequest) {
+        return pomodoroService.todayEvidence(currentUserService.requireUser(servletRequest));
     }
 
     @GetMapping("/today")

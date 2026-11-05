@@ -38,10 +38,21 @@ public class AppUser {
 
     private String motto;
 
+    @Column(length = 8)
+    private String language;
+
     private Instant createdAt;
 
+    private Instant termsAcceptedAt;
+
+    @Column(length = 32)
+    private String termsVersion;
+
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    // The default lets Hibernate safely upgrade the legacy local H2 file that
+    // predates Premium. PostgreSQL production schemas remain governed by
+    // Flyway; application code always sets this field explicitly for new users.
+    @Column(nullable = false, columnDefinition = "varchar(255) default 'FREE'")
     private PremiumTier premiumTier = PremiumTier.FREE;
 
     private Instant premiumExpiresAt;
@@ -85,8 +96,21 @@ public class AppUser {
         return motto;
     }
 
+    public String getLanguage() {
+        return language;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getTermsAcceptedAt() { return termsAcceptedAt; }
+
+    public String getTermsVersion() { return termsVersion; }
+
+    public void acceptTerms(String version, Instant acceptedAt) {
+        this.termsVersion = version;
+        this.termsAcceptedAt = acceptedAt;
     }
 
     public PremiumTier getPremiumTier() {
@@ -126,7 +150,16 @@ public class AppUser {
         if (motto != null) this.motto = motto;
     }
 
+    /** A nullable preference lets existing users retain their local default until they choose one. */
+    public void updateLanguage(String language) {
+        this.language = language;
+    }
+
     public void updatePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public void updateEmail(String email) {
+        this.email = email;
     }
 }

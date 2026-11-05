@@ -1,0 +1,16 @@
+import {challengeExport} from '../utils/challengeExport';
+import {downloadText} from '../utils/downloadText';
+import {useEffect,useRef,useState} from 'react';
+import api from '../api/client';import {useLanguage} from '../context/useLanguage';import {challengeHistory} from '../utils/challengeHistory';import {formatCalendarDate} from '../utils/dates';import {createLatestRequest} from '../utils/latestRequest';
+export default function ChallengeHistory({challenge,today}){
+ const {t,language}=useLanguage();const [open,setOpen]=useState(false),[rows,setRows]=useState(null),[evidence,setEvidence]=useState(null),[exportError,setExportError]=useState(false),[error,setError]=useState(false),[loading,setLoading]=useState(false),[attempt,setAttempt]=useState(0),[page,setPage]=useState(0);const gate=useRef(createLatestRequest());
+ useEffect(()=>{const current=gate.current;if(!open)return;setLoading(true);setError(false);setExportError(false);void current.run(()=>api.get('/challenges/'+challenge.id+'/history'),response=>{setRows(challengeHistory(response.data,challenge,today));setEvidence(response.data);},()=>setError(true),()=>setLoading(false));return()=>current.invalidate();},[open,challenge,today,attempt]);
+ const exportCsv=()=>{try{const file=challengeExport(challenge,evidence,today,t);downloadText(file.text,file.filename,file.mime);setExportError(false);}catch{setExportError(true);}};
+ const labels={COMPLETED:'Hoàn thành',FAILED:'Thất bại',SKIPPED:'Bỏ qua',UNRECORDED:'Chưa ghi nhận',UPCOMING:'Chưa tới ngày'};
+ return <section style={{marginTop:'1rem'}}><button className="btn btn-secondary btn-sm" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>{t(open?'Ẩn lịch sử thử thách':'Xem lịch sử từng ngày')}</button>
+  {open&&<><p>{t('Chỉ ngày hoàn thành trong khoảng thử thách được tính. Ngày chưa ghi nhận không tự coi là thất bại.')}</p>{loading&&<p role="status">{t('Đang tải...')}</p>}{error&&<p role="alert">{t('Chưa tải được lịch sử thử thách.')}</p>}
+   {!loading&&!error&&rows&&<><button className="btn btn-secondary btn-sm" onClick={exportCsv}>{t('Xuất lịch sử thử thách CSV')}</button><p>{t('File gồm toàn bộ ngày trong thử thách đã chọn, không chỉ trang đang xem; không chứa ghi chú riêng tư.')}</p>{exportError&&<p role="alert">{t('Chưa xuất được thử thách. Hãy tải lại lịch sử rồi thử lại.')}</p>}<p>{t('Lịch sử hiện có: {count} ngày hoàn thành.',{count:rows.filter(row=>row.status==='COMPLETED').length})}</p><ul style={{listStyle:'none',padding:0}}>{rows.slice(page*14,(page+1)*14).map(row=><li key={row.date} style={{padding:'0.5rem 0',borderBottom:'1px solid var(--border-color)'}}>{formatCalendarDate(row.date,language)} — {t(labels[row.status])}</li>)}</ul><div style={{display:'flex',flexWrap:'wrap',gap:'0.75rem'}}><button className="btn btn-secondary btn-sm" disabled={page===0} onClick={()=>setPage(value=>value-1)}>{t('Trước')}</button><span>{page+1}/{Math.ceil(rows.length/14)}</span><button className="btn btn-secondary btn-sm" disabled={(page+1)*14>=rows.length} onClick={()=>setPage(value=>value+1)}>{t('Sau')}</button></div></>}
+   <button className="btn btn-ghost btn-sm" disabled={loading} onClick={()=>setAttempt(value=>value+1)}>{t('Tải lại')}</button>
+  </>}
+ </section>;
+}

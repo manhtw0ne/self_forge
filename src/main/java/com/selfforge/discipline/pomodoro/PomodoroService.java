@@ -55,7 +55,7 @@ public class PomodoroService {
                 return PomodoroResponse.from(saved);
             }
         }
-        Habit habit = habitId != null ? habitService.getHabit(user, habitId) : null;
+        Habit habit = habitId != null ? habitService.getActiveHabit(user, habitId) : null;
         PomodoroSession session = new PomodoroSession(user, habit, duration, clock.instant());
         session.setStartRequestId(requestId == null ? null : requestId.toString());
         pomodoroRepository.save(session);
@@ -85,6 +85,54 @@ public class PomodoroService {
         return PomodoroResponse.from(session);
     }
 
+    public PomodoroResponse updateNote(AppUser user, Long sessionId, String note) {
+        return updateNote(user, sessionId, note, null);
+    }
+
+    public PomodoroResponse updateNote(AppUser user, Long sessionId, String note, String expectedNote) {
+        users.lockById(user.getId()).orElseThrow();
+        var session = pomodoroRepository.findById(sessionId)
+                .filter(s -> s.getUser().getId().equals(user.getId()))
+                .orElseThrow(() -> new EntityNotFoundException("Session not found"));
+        if (!session.isCompleted()) throw new IllegalStateException("Chỉ thêm ghi chú sau khi hoàn thành phiên.");
+        if (expectedNote != null && !expectedNote.equals(session.getNote() == null ? "" : session.getNote())) {
+            throw new IllegalStateException("Ghi chú phiên trên máy chủ đã thay đổi. Xem bản mới trước khi lưu tiếp.");
+        }
+        session.updateNote(note.trim());
+        return PomodoroResponse.from(session);
+    }
+
+    @Transactional(readOnly = true)
+    public PomodoroResponse getSession(AppUser user, Long sessionId) {
+        return PomodoroResponse.from(pomodoroRepository.findById(sessionId)
+                .filter(session -> session.getUser().getId().equals(user.getId()))
+                .orElseThrow(() -> new EntityNotFoundException("Session not found")));
+    }
+
+    public record HistorySummary(long total,long completed,long incomplete,long timedSessions,long minutes) {}
+    public record HistoryPage(List<PomodoroResponse> items, Long nextCursor, HistorySummary summary) { }
+
+    @Transactional(readOnly = true)
+    public HistoryPage history(AppUser user, Long beforeId, Boolean completed) { return history(user,beforeId,completed,null); }
+
+    @Transactional(readOnly = true)
+    public HistoryPage history(AppUser user, Long beforeId, Boolean completed, String query) { return history(user,beforeId,completed,query,null,null); }
+
+    @Transactional(readOnly = true)
+    public HistoryPage history(AppUser user, Long beforeId, Boolean completed, String query, java.time.LocalDate fromDate, java.time.LocalDate toDate) {
+        if (beforeId != null && beforeId <= 0) throw new IllegalArgumentException("Invalid history cursor");
+        String term=query==null?"":query.trim();if(term.length()>100)throw new IllegalArgumentException("Search query must be at most 100 characters");
+        UserTime time=new UserTime(clock);var today=time.today(user);
+        if(fromDate!=null&&(fromDate.getYear()<1||fromDate.getYear()>9999||fromDate.isAfter(today))||toDate!=null&&(toDate.getYear()<1||toDate.getYear()>9999||toDate.isAfter(today))||fromDate!=null&&toDate!=null&&fromDate.isAfter(toDate))throw new IllegalArgumentException("Invalid focus history date range");
+        Instant from=fromDate==null?Instant.parse("0001-01-01T00:00:00Z"):fromDate.atStartOfDay(time.zone(user)).toInstant();
+        Instant to=toDate==null?Instant.parse("+10000-01-01T00:00:00Z"):toDate.plusDays(1).atStartOfDay(time.zone(user)).toInstant();
+        var rows = pomodoroRepository.history(user.getId(), beforeId, completed, from, to, term, org.springframework.data.domain.PageRequest.of(0, 21));
+        var items = rows.stream().limit(20).map(PomodoroResponse::from).toList();
+        var totals=pomodoroRepository.historyTotals(user.getId(),completed,from,to,term);
+        var summary=new HistorySummary(totals.getTotal(),totals.getCompleted(),totals.getTotal()-totals.getCompleted(),totals.getTimedSessions(),totals.getMinutes());
+        return new HistoryPage(items, rows.size() > 20 ? items.getLast().id() : null,summary);
+    }
+
     private void validateDuration(int duration) {
         if (duration < 25 || duration > 120) {
             throw new IllegalArgumentException("Phiên tập trung nhận XP phải dài từ 25 đến 120 phút.");
@@ -95,6 +143,24 @@ public class PomodoroService {
     public List<PomodoroResponse> listRecent(AppUser user) {
         return pomodoroRepository.findTop20ByUserIdOrderByStartedAtDesc(user.getId())
                 .stream().map(PomodoroResponse::from).toList();
+    }
+
+    public record TodayEvidence(java.time.LocalDate date, String timezone, List<FocusEvidence> sessions) {}
+    public record FocusEvidence(Long id, Long habitId, int durationMinutes, java.time.Instant startedAt) {}
+    @Transactional(readOnly = true)
+    public TodayEvidence todayEvidence(AppUser user) {
+        return dayEvidence(user,null);
+    }
+    @Transactional(readOnly = true)
+    public TodayEvidence dayEvidence(AppUser user, java.time.LocalDate selected) {
+        UserTime time = new UserTime(clock);var date=selected==null?time.today(user):selected;
+        if(date.isAfter(time.today(user))||date.getYear()<1||date.getYear()>9999)throw new IllegalArgumentException("Invalid focus evidence date");
+        var day=time.day(user,date);
+        var sessions=pomodoroRepository.findByUserIdAndCompletedTrueAndStartedAtGreaterThanEqualAndStartedAtLessThan(user.getId(),day.start(),day.end()).stream()
+            .filter(row -> row.getDurationMinutes()>=25 && row.getDurationMinutes()<=120 && (row.getHabit()==null || row.getHabit().getUser().getId().equals(user.getId())))
+            .sorted(java.util.Comparator.comparing(PomodoroSession::getId))
+            .map(row -> new FocusEvidence(row.getId(),row.getHabit()==null?null:row.getHabit().getId(),row.getDurationMinutes(),row.getStartedAt())).toList();
+        return new TodayEvidence(date,time.zone(user).getId(),sessions);
     }
 
     @Transactional(readOnly = true)

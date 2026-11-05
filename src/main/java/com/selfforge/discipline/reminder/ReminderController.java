@@ -42,6 +42,9 @@ public class ReminderController {
         return reminderService.create(currentUserService.requireUser(servletRequest), request);
     }
 
+    @GetMapping("/{id}")
+    public ReminderResponse get(@PathVariable Long id,HttpServletRequest request){return reminderService.get(currentUserService.requireUser(request),id);}
+
     @PatchMapping("/{id}")
     public ReminderResponse update(@PathVariable Long id, @Valid @RequestBody UpdateReminderRequest request, HttpServletRequest servletRequest) {
         return reminderService.update(currentUserService.requireUser(servletRequest), id, request);

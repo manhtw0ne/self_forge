@@ -15,10 +15,11 @@ public class SessionController {
     private final AppUserRepository users;
     private final AuthSessionRepository sessions;
     private final TokenService tokens;
+    private final AccountSecurityEventService securityEvents;
 
     public SessionController(CurrentUserService current, AppUserRepository users,
-                             AuthSessionRepository sessions, TokenService tokens) {
-        this.current = current; this.users = users; this.sessions = sessions; this.tokens = tokens;
+                             AuthSessionRepository sessions, TokenService tokens, AccountSecurityEventService securityEvents) {
+        this.current = current; this.users = users; this.sessions = sessions; this.tokens = tokens; this.securityEvents = securityEvents;
     }
 
     @GetMapping
@@ -35,14 +36,21 @@ public class SessionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void revoke(@PathVariable Long id, HttpServletRequest request) {
         Long userId = lockAndAuthenticate(request);
-        sessions.findByIdAndUserId(id, userId).ifPresent(sessions::delete);
+        sessions.findByIdAndUserId(id, userId).ifPresent(session -> {
+            sessions.delete(session);
+            securityEvents.record(userId, AccountSecurityEventType.SESSION_REVOKED);
+        });
     }
 
     @DeleteMapping("/others")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void revokeOthers(HttpServletRequest request) {
         Long userId = lockAndAuthenticate(request);
-        sessions.deleteByUserIdAndTokenHashNot(userId, tokens.hash(current.token(request)));
+        String currentHash = tokens.hash(current.token(request));
+        boolean hasOther = sessions.findByUserIdAndExpiresAtAfterOrderByCreatedAtDesc(userId, Instant.now()).stream()
+                .anyMatch(session -> !session.getTokenHash().equals(currentHash));
+        sessions.deleteByUserIdAndTokenHashNot(userId, currentHash);
+        if (hasOther) securityEvents.record(userId, AccountSecurityEventType.OTHER_SESSIONS_REVOKED);
     }
 
     private Long lockAndAuthenticate(HttpServletRequest request) {

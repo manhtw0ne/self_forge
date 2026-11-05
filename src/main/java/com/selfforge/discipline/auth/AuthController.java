@@ -20,22 +20,26 @@ public class AuthController {
     private final AuthService authService;
     private final CurrentUserService currentUserService;
     private final LoginAttemptLimiter loginAttemptLimiter;
+    private final ClientAddressResolver clientAddressResolver;
 
-    public AuthController(AuthService authService, CurrentUserService currentUserService, LoginAttemptLimiter loginAttemptLimiter) {
+    public AuthController(AuthService authService, CurrentUserService currentUserService, LoginAttemptLimiter loginAttemptLimiter,
+            ClientAddressResolver clientAddressResolver) {
         this.authService = authService;
         this.currentUserService = currentUserService;
         this.loginAttemptLimiter = loginAttemptLimiter;
+        this.clientAddressResolver = clientAddressResolver;
     }
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+    public AuthResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
+        loginAttemptLimiter.acquire(request.email(), clientAddressResolver.resolve(httpRequest));
         return authService.register(request);
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        loginAttemptLimiter.acquire(request.email());
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        loginAttemptLimiter.acquire(request.email(), clientAddressResolver.resolve(httpRequest));
         return authService.login(request);
     }
 

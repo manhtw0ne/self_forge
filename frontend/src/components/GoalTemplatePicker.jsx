@@ -1,0 +1,5 @@
+import {useState} from 'react';import {useLanguage} from '../context/useLanguage';import {goalTemplates} from '../utils/goalTemplates';
+export default function GoalTemplatePicker({onApply,disabled}){
+ const {t}=useLanguage();const [id,setId]=useState(goalTemplates[0].id);
+ return <section style={{padding:'1rem',marginBottom:'1rem',border:'1px solid var(--border-color)',borderRadius:'0.75rem'}}><label className="form-label" htmlFor="goal-template-picker">{t('Bắt đầu từ mẫu mục tiêu')}</label><select id="goal-template-picker" className="form-select" value={id} disabled={disabled} onChange={event=>setId(event.target.value)}>{goalTemplates.map(row=><option key={row.id} value={row.id}>{t(row.name)}</option>)}</select><button type="button" className="btn btn-secondary btn-sm" style={{marginTop:'0.75rem'}} disabled={disabled} onClick={()=>onApply(id)}>{t('Điền mẫu để xem và chỉnh')}</button><p>{t('Mẫu chỉ điền bản nháp. Bạn tự chỉnh số lượng, đơn vị và hạn chót rồi xác nhận tạo.')}</p></section>;
+}

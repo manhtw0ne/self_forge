@@ -4,23 +4,49 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:coach": "node --test src/utils/weeklyCoach.test.js src/utils/goalCoach.test.js src/utils/restartCoach.test.js src/utils/journalCoach.test.js src/utils/aiQuota.test.js src/utils/requestId.test.js src/utils/feedback.test.js src/utils/dailyFocusCoach.test.js src/utils/habitCoach.test.js",
+    "test:release": "npm test && npm run test:coach",
+    "test:native": "node --test src/utils/nativeOAuth.test.js src/utils/nativeReminders.test.js",
+    "test:account-sync": "node --test src/utils/accountDataSync.test.js",
+    "test:habit-state-history": "node --test src/utils/habitStateHistory.test.js",
+    "test:spa-routes": "node scripts/verifySpaRoutes.mjs",
+    "test:native-release": "node --test scripts/syncNativeRelease.test.mjs",
     "dev": "vite",
     "build": "vite build",
+    "build:mobile": "npm run native:release:check && vite build --mode mobile && cap sync",
+    "native:release:check": "node scripts/syncNativeRelease.mjs --check",
+    "native:release:sync": "node scripts/syncNativeRelease.mjs --sync",
+    "native:android": "cap open android",
+    "native:ios": "cap open ios",
     "lint": "oxlint src vite.config.js",
-    "test": "node --test src/utils/dates.test.js src/utils/pendingProgress.test.js src/utils/language.test.js src/utils/pomodoroTimer.test.js src/utils/pomodoroStart.test.js src/utils/pendingChallenge.test.js src/utils/latestRequest.test.js src/utils/journalDraft.test.js src/utils/authSession.test.js src/utils/pendingHabitBatch.test.js src/utils/saveAndRefresh.test.js src/utils/journalLimits.test.js src/utils/goalForm.test.js",
+    "test": "node --test scripts/syncNativeRelease.test.mjs src/utils/restartHistory.test.js src/utils/dailyReview.test.js src/utils/habitPauseBatch.test.js src/utils/smallStepStorage.test.js src/utils/smallStepTimer.test.js src/utils/checkInRangeExport.test.js src/utils/newCheckIn.test.js src/utils/journalWeekPlan.test.js src/utils/rewardHistory.test.js src/utils/rewardClaim.test.js src/utils/journalMonth.test.js src/utils/resourceTarget.test.js src/utils/quickSearch.test.js src/utils/weekPlanFocus.test.js src/utils/restartReflection.test.js src/utils/restartHabit.test.js src/utils/copyHabit.test.js src/utils/categoryComparison.test.js src/utils/goalDayHistory.test.js src/utils/goalDailyActivity.test.js src/utils/checkInNavigation.test.js src/utils/checkInRange.test.js src/utils/reminderEdit.test.js src/utils/reminderSnooze.test.js src/utils/categoryNavigation.test.js src/utils/categoryActivity.test.js src/utils/companionCard.test.js src/utils/companionRhythm.test.js src/utils/habitCategoryBatch.test.js src/utils/previousReview.test.js src/utils/categoryForm.test.js src/utils/pomodoroBreak.test.js src/utils/goalHistorySummary.test.js src/utils/journalComparison.test.js src/utils/repeatChallenge.test.js src/utils/rewardList.test.js src/utils/pendingReward.test.js src/utils/dates.test.js src/utils/pendingProgress.test.js src/utils/language.test.js src/utils/pomodoroTimer.test.js src/utils/pomodoroStart.test.js src/utils/pendingChallenge.test.js src/utils/latestRequest.test.js src/utils/journalDraft.test.js src/utils/authSession.test.js src/utils/pendingHabitBatch.test.js src/utils/saveAndRefresh.test.js src/utils/journalLimits.test.js src/utils/goalForm.test.js src/utils/reviewDraft.test.js src/utils/progressSync.test.js src/utils/moodTimeline.test.js src/utils/rewardForm.test.js src/utils/themePreference.test.js src/utils/retryAfter.test.js src/utils/checkInFailure.test.js src/utils/todaysReminders.test.js src/utils/goalList.test.js src/utils/habitList.test.js src/utils/sessionNoteDraft.test.js src/utils/pwa.test.js src/utils/accountDraftCleanup.test.js src/utils/returnPath.test.js src/utils/reminderCalendar.test.js src/utils/pendingReminder.test.js src/utils/draftLibrary.test.js src/utils/reviewHistory.test.js src/utils/checkInHistory.test.js src/utils/pomodoroExport.test.js src/utils/journalExport.test.js src/utils/gettingStarted.test.js src/utils/pomodoroHistory.test.js src/utils/pendingGoalCreate.test.js src/utils/goalDraft.test.js src/utils/networkStatus.test.js src/utils/goalPlan.test.js src/utils/goalsExport.test.js src/utils/pomodoroPageSummary.test.js src/utils/weeklyInsight.test.js src/utils/weekPlan.test.js src/utils/restartPlan.test.js src/utils/goalHabit.test.js src/utils/habitGoalLinks.test.js src/utils/focusPlan.test.js src/utils/focusRecovery.test.js src/utils/habitReminder.test.js src/utils/companion.test.js src/utils/companionHistory.test.js src/utils/checkInPreview.test.js src/utils/companionMilestone.test.js src/utils/habitTrend.test.js src/utils/habitNavigation.test.js src/utils/weeklyHabitInsights.test.js src/utils/weekPlanReminder.test.js src/utils/goalAgenda.test.js src/utils/appVersion.test.js src/utils/dailyHabitView.test.js src/utils/help.test.js src/utils/securityEvents.test.js src/utils/goalCorrection.test.js src/utils/goalCorrectionHistory.test.js src/utils/goalPlanActions.test.js src/utils/challengeWindow.test.js src/utils/challengeProposal.test.js src/utils/challengeNextStep.test.js src/utils/challengeAgenda.test.js src/utils/dailyFocusPlan.test.js src/utils/dailyFocusDraft.test.js src/utils/dailyFocusContinuation.test.js src/utils/dailyFocusProgress.test.js src/utils/habitTemplateReview.test.js src/utils/habitTemplates.test.js src/utils/weeklyComparison.test.js src/utils/journalEvidence.test.js src/utils/journalSearch.test.js src/utils/journalDelete.test.js src/utils/monthlyActivity.test.js src/utils/monthlyHabitActivity.test.js src/utils/monthlyActivityExport.test.js src/utils/dashboardFocus.test.js src/utils/activityDayEvidence.test.js src/utils/weeklyActivity.test.js src/utils/journalNavigation.test.js src/utils/monthlyMood.test.js src/utils/moodEdit.test.js src/utils/monthlyMoodExport.test.js src/utils/habitCapacity.test.js src/utils/goalTemplates.test.js src/utils/goalMilestones.test.js src/utils/goalRecovery.test.js src/utils/journalTemplates.test.js src/utils/journalCalendar.test.js src/utils/challengeSchedule.test.js src/utils/challengeList.test.js src/utils/focusHistoryRange.test.js src/utils/focusHistorySummary.test.js src/utils/reminderWeek.test.js src/utils/rewardBudget.test.js src/utils/rewardEdit.test.js src/utils/previousJournal.test.js src/utils/pomodoroAlarm.test.js src/utils/weekPlanCalendar.test.js src/utils/companionWeek.test.js src/utils/repeatGoal.test.js src/utils/motionPreference.test.js src/utils/dashboardPanels.test.js src/utils/reviewComparison.test.js src/utils/focusHistorySummaryExport.test.js src/utils/focusHistoryView.test.js src/utils/goalPlanPreference.test.js src/utils/nativeOAuth.test.js src/utils/nativeReminders.test.js src/utils/aiQuota.test.js src/utils/premiumStatus.test.js src/utils/habitStateHistory.test.js",
+    "test:support": "node --test src/utils/supportContact.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.18.1",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/local-notifications": "^8.3.1",
+    "axios": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.0",
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3",
+    "@emnapi/wasi-threads": "^1.2.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "oxlint": "^1.69.0",
-    "vite": "^8.1.0"
+    "vite": "^8.3.5"
+  },
+  "overrides": {
+    "follow-redirects": "1.16.2"
   }
 }

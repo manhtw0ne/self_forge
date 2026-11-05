@@ -1,30 +1,28 @@
+import PasswordInput from './PasswordInput';
+import { useResendCooldown } from '../hooks/useResendCooldown';
+import { retryAfterSeconds } from '../utils/retryAfter';
 import { useLanguage } from '../context/useLanguage';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import api from '../api/client';
 
 export default function PasswordResetForm({ initialEmail, onBack }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [email, setEmail] = useState(initialEmail || '');
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
-  const [cooldown, setCooldown] = useState(0);
+  const resend = useResendCooldown();
+  const cooldown = resend.seconds;
   const [busy, setBusy] = useState(false);
   const guard = useRef(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
 
-  useEffect(() => {
-    if (!cooldown) return;
-    const timer = setTimeout(() => setCooldown(value => Math.max(0, value - 1)), 1000);
-    return () => clearTimeout(timer);
-  }, [cooldown]);
-
   const requestCode = async (event) => {
     event?.preventDefault();
-    if (guard.current || cooldown > 0) return;
+    if (guard.current || resend.blocked()) return;
     guard.current = true;
     setBusy(true);
     setError('');
@@ -32,9 +30,10 @@ export default function PasswordResetForm({ initialEmail, onBack }) {
       const response = await api.post('/auth/password-reset/request', { email });
       setSent(true);
       setCode('');
-      setCooldown(60);
+      resend.start(60);
       setMessage(response.data.message);
     } catch (err) {
+      if (err.response?.status === 429) resend.start(retryAfterSeconds(err.response.headers));
       setError(err.response?.data?.detail || 'Chưa gửi được yêu cầu. Vui lòng thử lại sau.');
     } finally {
       guard.current = false;
@@ -80,9 +79,13 @@ export default function PasswordResetForm({ initialEmail, onBack }) {
             <div className="form-group">
               <label htmlFor="reset-email" className="form-label">{t('Email tài khoản')}</label>
               <input id="reset-email" type="email" autoComplete="email" maxLength={254}
-                className="form-input" value={email} disabled={sent}
+                className="form-input" autoFocus value={email} disabled={sent}
                 onChange={event => setEmail(event.target.value)} required />
             </div>
+            {sent && <button type="button" className="btn btn-secondary" onClick={() => {
+              if ((code || password || confirmation) && !window.confirm(t('Đổi email sẽ xóa mã và mật khẩu đang nhập. Tiếp tục?'))) return;
+              setSent(false); setCode(''); setPassword(''); setConfirmation(''); setMessage(''); setError('');
+            }}>{t('Sửa email nhận mã')}</button>}
             {sent && (
               <>
                 <p>{t('Mã gồm 6 chữ số, có hiệu lực 10 phút. Mã gửi mới sẽ thay thế mã cũ.')}</p>
@@ -93,17 +96,19 @@ export default function PasswordResetForm({ initialEmail, onBack }) {
                 </div>
                 <div className="form-group">
                   <label htmlFor="reset-password" className="form-label">{t('Mật khẩu mới')}</label>
-                  <input id="reset-password" type="password" autoComplete="new-password" className="form-input"
-                    minLength={8} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} required />
+                  <PasswordInput id="reset-password" type="password" autoComplete="new-password" className="form-input"
+                    minLength={10} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} required />
                 </div>
                 <div className="form-group">
                   <label htmlFor="reset-confirm" className="form-label">{t('Nhập lại mật khẩu mới')}</label>
-                  <input id="reset-confirm" type="password" autoComplete="new-password" className="form-input"
-                    minLength={8} maxLength={128} value={confirmation} onChange={event => setConfirmation(event.target.value)} required />
+                  <PasswordInput id="reset-confirm" type="password" autoComplete="new-password" className="form-input"
+                    minLength={10} maxLength={128} value={confirmation} onChange={event => setConfirmation(event.target.value)} required />
                 </div>
+                <p>{language === 'en' ? 'Use at least 10 characters; do not use your email as the password.' : 'Mật khẩu mới cần ít nhất 10 ký tự; không dùng email làm mật khẩu.'}</p>
               </>
             )}
-            <button className="btn btn-primary" type="submit">{busy ? t('Đang xử lý…') : sent ? t('Đặt lại mật khẩu') : t('Gửi mã xác nhận')}</button>
+            <button className="btn btn-primary" type="submit" disabled={!sent && cooldown > 0}>{busy ? t('Đang xử lý…') : sent ? t('Đặt lại mật khẩu') : t('Gửi mã xác nhận')}</button>
+            {!sent && cooldown > 0 && <p role="status">{t('Gửi lại sau {seconds}s', { seconds: cooldown })}</p>}
             {sent && <button className="btn btn-secondary" type="button" style={{ marginTop: '0.75rem' }}
               disabled={cooldown > 0} onClick={requestCode}>{cooldown ? t('Gửi lại sau {seconds}s', { seconds: cooldown }) : t('Gửi lại mã')}</button>}
           </fieldset>

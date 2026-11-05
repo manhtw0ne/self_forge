@@ -1,0 +1,12 @@
+package com.selfforge.discipline.goal;
+import com.selfforge.discipline.auth.CurrentUserService;import jakarta.persistence.EntityNotFoundException;import jakarta.servlet.http.HttpServletRequest;import org.springframework.data.domain.PageRequest;import org.springframework.transaction.annotation.Transactional;import org.springframework.web.bind.annotation.*;import java.time.Instant;import java.util.List;
+@RestController @RequestMapping("/api/goals/{goalId}") @Transactional(readOnly=true)
+public class GoalProgressHistoryController {
+ private final CurrentUserService current;private final GoalRepository goals;private final GoalProgressCorrectionRepository history;
+ public GoalProgressHistoryController(CurrentUserService current,GoalRepository goals,GoalProgressCorrectionRepository history){this.current=current;this.goals=goals;this.history=history;}
+ public record Entry(Long id,int fromValue,int toValue,int targetValue,String unit,GoalStatus fromStatus,GoalStatus toStatus,Instant createdAt,String kind){}
+ public record Response(Long goalId,List<Entry> items,Long nextCursor){}
+ @GetMapping("/progress-corrections") public Response get(@PathVariable Long goalId,@RequestParam(required=false)Long beforeId,HttpServletRequest request){return read(goalId,beforeId,"CORRECTION",request);}
+ @GetMapping("/progress-history") public Response all(@PathVariable Long goalId,@RequestParam(required=false)Long beforeId,@RequestParam(required=false)String kind,HttpServletRequest request){current.requireUser(request);if(kind!=null&&!java.util.List.of("ADD","CORRECTION").contains(kind))throw new IllegalArgumentException("Loại lịch sử không hợp lệ.");return read(goalId,beforeId,kind,request);}
+ private Response read(Long goalId,Long beforeId,String kind,HttpServletRequest request){var user=current.requireUser(request);if(beforeId!=null&&beforeId<=0)throw new IllegalArgumentException("Mã phân trang không hợp lệ.");goals.findByIdAndUserId(goalId,user.getId()).orElseThrow(()->new EntityNotFoundException("Goal not found"));var rows=history.history(user.getId(),goalId,beforeId,kind,PageRequest.of(0,21));var visible=rows.stream().limit(20).map(row->new Entry(row.getId(),row.getFromValue(),row.getToValue(),row.getTargetValue(),row.getUnit(),row.getFromStatus(),row.getToStatus(),row.getCreatedAt(),row.getKind())).toList();return new Response(goalId,visible,rows.size()>20?visible.getLast().id():null);}
+}

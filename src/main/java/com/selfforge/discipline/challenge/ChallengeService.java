@@ -45,7 +45,7 @@ public class ChallengeService {
     @Transactional(readOnly = true)
     public List<ChallengeResponse> list(AppUser user) {
         return challengeRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
-                .map(ChallengeResponse::from)
+                .map(this::response)
                 .toList();
     }
 
@@ -59,11 +59,11 @@ public class ChallengeService {
                     throw new IllegalStateException("Mã yêu cầu đã được dùng cho thử thách khác.");
                 }
                 return challengeRepository.findByIdAndUserId(prior.get().getChallengeId(), user.getId())
-                        .map(ChallengeResponse::from)
+                        .map(this::response)
                         .orElseThrow(() -> new IllegalStateException("Thử thách của yêu cầu này đã bị xóa."));
             }
         }
-        Habit habit = habitService.getHabit(user, request.habitId());
+        Habit habit = habitService.getActiveHabit(user, request.habitId());
         LocalDate startDate = request.startDate() == null ? userTime.today(user) : request.startDate();
         int targetDays = request.targetDays() == null ? 7 : request.targetDays();
         Challenge challenge = new Challenge(
@@ -72,30 +72,32 @@ public class ChallengeService {
                 request.name(),
                 request.description(),
                 startDate,
-                targetDays
+                targetDays,request.windowDays()==null?targetDays:request.windowDays()
         );
+        int days = completedDays(challenge);
+        challenge.updateStatus(resolvedStatus(challenge, days));
         challengeRepository.save(challenge);
         if (request.requestId() != null) receipts.save(new ChallengeCreateReceipt(user.getId(),
                 request.requestId().toString(), fingerprint, challenge.getId()));
-        return ChallengeResponse.from(challenge);
+        return ChallengeResponse.from(challenge, challenge.getStatus(), days);
     }
 
     public ChallengeResponse updateStatus(AppUser user, Long id, UpdateChallengeStatusRequest request) {
+        users.lockById(user.getId()).orElseThrow();
         Challenge challenge = getChallenge(user, id);
+        int days = completedDays(challenge);
+        if (request.status() == ChallengeStatus.COMPLETED && days < challenge.getTargetDays()) {
+            throw new IllegalStateException("Thử thách chưa đủ ngày hoàn thành.");
+        }
         challenge.updateStatus(request.status());
-        return ChallengeResponse.from(challenge);
+        challenge.updateStatus(resolvedStatus(challenge, days));
+        return ChallengeResponse.from(challenge, challenge.getStatus(), days);
     }
 
     @Transactional(readOnly = true)
     public ChallengeProgressResponse progress(AppUser user, Long id) {
         Challenge challenge = getChallenge(user, id);
-        int completedDays = checkInRepository.countByHabit_User_IdAndHabitIdAndStatusAndDateBetween(
-                user.getId(),
-                challenge.getHabit().getId(),
-                CheckInStatus.COMPLETED,
-                challenge.getStartDate(),
-                challenge.getEndDate()
-        );
+        int completedDays = completedDays(challenge);
         int remainingDays = Math.max(0, challenge.getTargetDays() - completedDays);
         double completionRate = challenge.getTargetDays() == 0 ? 0 : completedDays / (double) challenge.getTargetDays();
         return new ChallengeProgressResponse(
@@ -109,8 +111,43 @@ public class ChallengeService {
                 completedDays,
                 remainingDays,
                 Math.min(1, completionRate),
-                challenge.getStatus()
+                resolvedStatus(challenge, completedDays)
         );
+    }
+
+    @Transactional(readOnly = true)
+    public ChallengeHistoryResponse history(AppUser user, Long id) {
+        Challenge challenge = getChallenge(user, id);
+        var entries = checkInRepository.findByHabit_User_IdAndHabitIdAndDateBetween(user.getId(), challenge.getHabit().getId(), challenge.getStartDate(), challenge.getEndDate()).stream()
+            .sorted(java.util.Comparator.comparing(com.selfforge.discipline.checkin.DailyCheckIn::getDate))
+            .map(row -> new ChallengeHistoryResponse.Entry(row.getId(), row.getDate(), row.getStatus())).toList();
+        return new ChallengeHistoryResponse(challenge.getId(), challenge.getHabit().getId(), challenge.getStartDate(), challenge.getEndDate(), entries);
+    }
+
+    public void reconcileForHabit(AppUser user, Long habitId, LocalDate changedDate) {
+        // Caller holds the user lock and has flushed the changed check-in in this transaction.
+        for (Challenge challenge : challengeRepository.findByUserIdAndHabitIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                user.getId(), habitId, changedDate, changedDate)) {
+            if (challenge.getStatus() != ChallengeStatus.ABANDONED) {
+                challenge.updateStatus(resolvedStatus(challenge, completedDays(challenge)));
+            }
+        }
+    }
+
+    private ChallengeResponse response(Challenge challenge) {
+        int days = completedDays(challenge);
+        return ChallengeResponse.from(challenge, resolvedStatus(challenge, days), days);
+    }
+
+    private int completedDays(Challenge challenge) {
+        return checkInRepository.countByHabit_User_IdAndHabitIdAndStatusAndDateBetween(
+                challenge.getUser().getId(), challenge.getHabit().getId(), CheckInStatus.COMPLETED,
+                challenge.getStartDate(), challenge.getEndDate());
+    }
+
+    private ChallengeStatus resolvedStatus(Challenge challenge, int days) {
+        if (challenge.getStatus() == ChallengeStatus.ABANDONED) return ChallengeStatus.ABANDONED;
+        return challenge.getTargetDays() > 0 && days >= challenge.getTargetDays() ? ChallengeStatus.COMPLETED : ChallengeStatus.ACTIVE;
     }
 
     public void delete(AppUser user, Long id) {
@@ -122,9 +159,14 @@ public class ChallengeService {
     private String fingerprint(CreateChallengeRequest request) {
         try {
             // Preserve null date: retrying after midnight must use the original challenge date.
-            byte[] bytes = json.writeValueAsBytes(new Object[]{request.habitId(), request.name(),
+            int target=request.targetDays()==null?7:request.targetDays();
+            int window=request.windowDays()==null?target:request.windowDays();
+            var fields=new java.util.ArrayList<Object>(java.util.Arrays.asList(request.habitId(), request.name(),
                     request.description(), request.startDate() == null ? null : request.startDate().toString(),
-                    request.targetDays() == null ? 7 : request.targetDays()});
+                    target));
+            // Preserve fingerprints of legacy retries when the window equals the target.
+            if(window!=target)fields.add(window);
+            byte[] bytes=json.writeValueAsBytes(fields);
             return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (java.io.IOException | java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("Cannot fingerprint challenge request", e);

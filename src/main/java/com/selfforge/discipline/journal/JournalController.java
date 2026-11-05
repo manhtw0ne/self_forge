@@ -38,9 +38,20 @@ public class JournalController {
         return journalService.get(currentUserService.requireUser(servletRequest), date);
     }
 
+    @GetMapping("/search")
+    public JournalService.SearchPage search(@RequestParam String q,@RequestParam(defaultValue="ALL") String field,@RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate before,@RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate fromDate,@RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate toDate,HttpServletRequest servletRequest) {
+        return journalService.search(currentUserService.requireUser(servletRequest),q,field,before,fromDate,toDate);
+    }
+
     @GetMapping("/dates")
     public List<LocalDate> dates(HttpServletRequest servletRequest) {
         return journalService.listDates(currentUserService.requireUser(servletRequest));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@Valid @RequestBody JournalRequests.DeleteJournalRequest request,HttpServletRequest servletRequest) {
+        journalService.delete(currentUserService.requireUser(servletRequest),request);
     }
 
     @PostMapping

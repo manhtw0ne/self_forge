@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {dailyFocusContinuation} from './dailyFocusContinuation.js';import {dailyFocusAccountDraft} from './dailyFocusAccount.js';
+const draft={version:1,date:'2026-10-15',budget:90,energy:'MEDIUM',ids:[1,2,3]},owned=[1,2,3].map(id=>({id,name:'Habit '+id,active:true})),session={id:10,habitId:1,durationMinutes:30,startedAt:'2026-10-15T03:00:00Z',completed:true};
+const run=(d=draft,s=session,h=owned,date='2026-10-15')=>dailyFocusContinuation(d,s,h,date,'Asia/Bangkok');
+test('saved session prepares the next task from the same calendar day without claiming prior completion',()=>{const result=run();assert.equal(result.position,1);assert.equal(result.total,3);assert.deepEqual(result.next,{id:2,name:'Habit 2',minutes:25,breakBefore:5});assert.equal(run(draft,{...session,habitId:3,durationMinutes:25}).next,null);assert.equal(run(draft,{...session,habitId:2,durationMinutes:25}).position,2);});
+test('continuation refuses unrelated sessions, stale dates and unavailable habits',()=>{for(const extra of [{completed:false},{habitId:null},{habitId:99},{durationMinutes:25},{startedAt:'2026-10-14T03:00:00Z'}])assert.equal(run(draft,{...session,...extra}),null);assert.equal(run({...draft,date:'2026-10-14'}),null);assert.throws(()=>run(draft,session,owned.filter(h=>h.id!==2)));assert.throws(()=>run(draft,session,owned.map(h=>h.id===2?{...h,active:false}:h)));assert.throws(()=>run(draft,{...session,id:-1}));});
+test('continuation uses profile timezone at midnight rather than browser calendar date',()=>{assert.equal(run(draft,{...session,startedAt:'2026-10-14T18:00:00Z'}).position,1);assert.equal(run(draft,{...session,startedAt:'2026-10-14T16:59:00Z'}),null);});
+test('account-saved plan has the same validated continuation shape as a local draft',()=>{
+ const account=dailyFocusAccountDraft({date:'2026-10-15',budget:90,energy:'MEDIUM',habitIds:[1,2,3],version:4},'2026-10-15');
+ assert.equal(run(account).next.name,'Habit 2');
+});

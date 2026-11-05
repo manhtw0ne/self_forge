@@ -22,7 +22,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:registration;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.flyway.enabled=true", "spring.flyway.locations=classpath:db/migration/postgresql",
-        "spring.jpa.hibernate.ddl-auto=validate", "app.registration.require-email-verification=true"})
+        "spring.jpa.hibernate.ddl-auto=validate", "app.registration.require-email-verification=true",
+        // These cases exercise the registration-code resend policy itself.
+        // Client-network throttling is covered independently by EmailRequestLimiterTests.
+        "app.email-request-limit.per-client-limit=1000"})
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class RegistrationTests {
@@ -30,6 +33,7 @@ class RegistrationTests {
     @Autowired ObjectMapper json;
     @Autowired AppUserRepository users;
     @Autowired RegistrationCodeRepository codes;
+    @Autowired PasswordHasher passwords;
     @MockitoBean PasswordResetMail mail;
     @MockitoBean Clock clock;
     private final Map<String, String> inbox = new java.util.concurrent.ConcurrentHashMap<>();
@@ -39,6 +43,8 @@ class RegistrationTests {
         when(mail.available()).thenReturn(true);
         doAnswer(call -> { inbox.put(call.getArgument(0), call.getArgument(1)); return null; })
                 .when(mail).sendRegistration(anyString(), anyString());
+        doAnswer(call -> { inbox.put(call.getArgument(0), call.getArgument(1)); return null; })
+                .when(mail).sendAccountEmailVerification(anyString(), anyString());
     }
     private String email() { return UUID.randomUUID() + "@example.com"; }
     private String request(String email) throws Exception {
@@ -47,8 +53,9 @@ class RegistrationTests {
                 .andReturn().getResponse().getContentAsString();
     }
     private org.springframework.test.web.servlet.ResultActions register(String email, String code) throws Exception {
-        var body = new HashMap<String, String>();
+        var body = new HashMap<String, Object>();
         body.put("email", email); body.put("displayName", "Tester"); body.put("password", "password123");
+        body.put("termsAccepted", true);
         if (code != null) body.put("code", code);
         return mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(body)));
@@ -61,7 +68,10 @@ class RegistrationTests {
         assertNotEquals(inbox.get(email), codes.findById(email).orElseThrow().getCodeHash());
         var body = register(email, inbox.get(email)).andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        assertNotNull(users.findByEmail(email).orElseThrow().getEmailVerifiedAt());
+        var user = users.findByEmail(email).orElseThrow();
+        assertNotNull(user.getEmailVerifiedAt());
+        assertEquals("2026-10-28", user.getTermsVersion());
+        assertNotNull(user.getTermsAcceptedAt());
         mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + json.readTree(body).get("token").asText()))
                 .andExpect(status().isOk());
         register(email, inbox.get(email)).andExpect(status().isBadRequest());
@@ -72,6 +82,13 @@ class RegistrationTests {
         String wrong = actual.equals("000000") ? "000001" : "000000";
         for (int i = 0; i < 5; i++) register(email, wrong).andExpect(status().isBadRequest());
         register(email, actual).andExpect(status().isBadRequest());
+        assertFalse(users.existsByEmail(email));
+    }
+    @Test void registrationRequiresExplicitTermsAcceptance() throws Exception {
+        String email = email();
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("email", email, "displayName", "Tester", "password", "password123", "termsAccepted", false))))
+                .andExpect(status().isBadRequest());
         assertFalse(users.existsByEmail(email));
     }
     @Test void expirationResendAndHourlyLimit() throws Exception {
@@ -119,5 +136,24 @@ class RegistrationTests {
         }
         verify(mail, times(1)).sendRegistration(eq(email), anyString());
         register(email, inbox.get(email)).andExpect(status().isCreated());
+    }
+
+    @Test void legacyAccountCanVerifyItsExistingEmailWithoutCreatingAnotherAccount() throws Exception {
+        String email = email();
+        users.save(new AppUser(email, "Legacy", passwords.hash("password123")));
+        String token = json.readTree(mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("email", email, "password", "password123"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();
+
+        mvc.perform(get("/api/profile/email-verification/availability").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true)).andExpect(jsonPath("$.verified").value(false));
+        mvc.perform(post("/api/profile/email-verification/request").header("Authorization", "Bearer " + token))
+                .andExpect(status().isAccepted());
+        mvc.perform(post("/api/profile/email-verification/confirm").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("code", inbox.get(email)))))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.emailVerified").value(true));
+        verify(mail).sendAccountEmailVerification(eq(email), matches("[0-9]{6}"));
     }
 }

@@ -52,6 +52,13 @@ public class Goal {
         }
     }
 
+    public void correctProgress(int value) {
+        if (status == GoalStatus.ABANDONED) throw new IllegalStateException("Khôi phục mục tiêu trước khi điều chỉnh tiến độ.");
+        if (value < 0 || value > targetValue) throw new IllegalArgumentException("Số lượng thực tế phải từ 0 đến chỉ tiêu.");
+        currentValue = value;
+        status = value == targetValue ? GoalStatus.COMPLETED : GoalStatus.ACTIVE;
+    }
+
     public void update(String name, String description, Integer targetValue, String unit, LocalDate deadline) {
         if (targetValue != null && targetValue <= 0) throw new IllegalArgumentException("Chỉ tiêu phải lớn hơn 0.");
         if (targetValue != null && targetValue != this.targetValue && status != GoalStatus.ACTIVE) {

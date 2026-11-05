@@ -1,0 +1,2 @@
+export function readResourceTarget(search,kind){if(!['challenge','reward'].includes(kind))throw Error('Invalid resource kind');const values=new URLSearchParams(search).getAll(kind);if(!values.length)return null;const raw=values[0],id=Number(raw);return {id:values.length===1&&/^[1-9]\d*$/.test(raw)&&Number.isSafeInteger(id)?id:null};}
+export function targetedResources(rows,target){if(!target)return rows;return target.id===null?[]:rows.filter(row=>row.id===target.id);}

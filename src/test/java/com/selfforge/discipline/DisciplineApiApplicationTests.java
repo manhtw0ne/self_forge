@@ -34,7 +34,8 @@ class DisciplineApiApplicationTests {
                 {
                   "email": "student@example.com",
                   "displayName": "Java Student",
-                  "password": "password123"
+                  "password": "password123",
+                  "termsAccepted": true
                 }
                 """;
 

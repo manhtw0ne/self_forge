@@ -13,9 +13,12 @@ public record ChallengeResponse(
         LocalDate endDate,
         int targetDays,
         ChallengeStatus status,
-        Instant createdAt
+        Instant createdAt,
+        int completedDays,
+        int remainingDays,
+        double completionRate
 ) {
-    static ChallengeResponse from(Challenge challenge) {
+    static ChallengeResponse from(Challenge challenge, ChallengeStatus resolvedStatus, int completedDays) {
         return new ChallengeResponse(
                 challenge.getId(),
                 challenge.getHabit().getId(),
@@ -25,8 +28,11 @@ public record ChallengeResponse(
                 challenge.getStartDate(),
                 challenge.getEndDate(),
                 challenge.getTargetDays(),
-                challenge.getStatus(),
-                challenge.getCreatedAt()
+                resolvedStatus,
+                challenge.getCreatedAt(),
+                completedDays,
+                Math.max(0, challenge.getTargetDays() - completedDays),
+                challenge.getTargetDays() <= 0 ? 0 : Math.min(1, completedDays / (double) challenge.getTargetDays())
         );
     }
 }

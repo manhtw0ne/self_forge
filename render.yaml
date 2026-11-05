@@ -1,0 +1,30 @@
+# Render Blueprint for a reproducible SelfForge beta web service.
+#
+# It intentionally does not create a database. Choose and provision the
+# PostgreSQL service separately, then provide the three JDBC variables in the
+# Render dashboard. This avoids silently creating a billable database or
+# guessing credentials during a Blueprint sync.
+services:
+  - type: web
+    name: selfforge-evol
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Update both public-origin values before using a custom domain.
+      - key: APP_PUBLIC_URL
+        value: https://selfforge-evol.onrender.com
+      - key: APP_CORS_ALLOWED_ORIGINS
+        value: https://selfforge-evol.onrender.com,https://localhost,capacitor://localhost
+      # Spring requires a JDBC PostgreSQL URL, for example
+      # jdbc:postgresql://HOST:5432/selfforge?sslmode=require . Do not paste a
+      # postgres:// URL into this variable.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USERNAME
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false

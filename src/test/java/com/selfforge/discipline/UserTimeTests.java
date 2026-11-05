@@ -4,6 +4,7 @@ import com.selfforge.discipline.auth.AppUser;
 import com.selfforge.discipline.common.UserTime;
 import com.selfforge.discipline.habit.Habit;
 import com.selfforge.discipline.habit.HabitService;
+import com.selfforge.discipline.habit.HabitStateHistoryRepository;
 import com.selfforge.discipline.reminder.*;
 import com.selfforge.discipline.mood.*;
 import java.time.*;
@@ -62,13 +63,23 @@ class UserTimeTests {
         var user = user("Asia/Ho_Chi_Minh");
         var repository = mock(ReminderRepository.class);
         var habit = mock(Habit.class);
+        when(habit.isActive()).thenReturn(true);
+        when(habit.getId()).thenReturn(1L);
+        when(habit.getScheduledDays()).thenReturn("SUN");
+        var restDayHabit = mock(Habit.class);
+        when(restDayHabit.isActive()).thenReturn(true);
+        when(restDayHabit.getId()).thenReturn(2L);
+        when(restDayHabit.getScheduledDays()).thenReturn("MON");
         var due = new Reminder(user, habit, LocalTime.of(23, 50), "SUN", "due");
         var wrongDay = new Reminder(user, habit, LocalTime.of(23, 50), "MON", "wrong day");
         var tooOld = new Reminder(user, habit, LocalTime.of(23, 39), "SUN", "old");
+        var scheduledRest = new Reminder(user, restDayHabit, LocalTime.of(23, 50), "SUN", "rest day");
         when(repository.findByUserIdAndEnabledTrueOrderByReminderTimeAsc(1L))
-                .thenReturn(List.of(due, wrongDay, tooOld));
-        var service = new ReminderService(repository, mock(HabitService.class), time("2026-09-20T17:10:00Z"));
+                .thenReturn(List.of(due, wrongDay, tooOld, scheduledRest));
+        var service = new ReminderService(repository, mock(HabitService.class), time("2026-09-20T17:10:00Z"), mock(com.selfforge.discipline.auth.AppUserRepository.class), mock(ReminderCreateReceiptRepository.class), new com.fasterxml.jackson.databind.ObjectMapper(), mock(HabitStateHistoryRepository.class));
         assertEquals(1, service.getDueReminders(user).size());
         assertEquals("due", service.getDueReminders(user).getFirst().message());
+        when(habit.isActive()).thenReturn(false);
+        assertTrue(service.getDueReminders(user).isEmpty());
     }
 }

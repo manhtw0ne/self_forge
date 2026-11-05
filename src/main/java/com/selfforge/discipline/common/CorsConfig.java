@@ -1,5 +1,7 @@
 package com.selfforge.discipline.common;
 
+import java.util.Arrays;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,9 +20,11 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/api/**")
-                        .allowedOrigins(allowedOrigins.split(","))
+                        .allowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                                .map(String::trim).filter(origin -> !origin.isEmpty()).toArray(String[]::new))
                         .allowedMethods("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
-                        .allowedHeaders("*");
+                        .allowedHeaders("*")
+                        .exposedHeaders(RequestIdFilter.HEADER);
             }
         };
     }

@@ -1,0 +1,7 @@
+import {readWeeklyInsight} from './weeklyInsight.js';import {weeklyHabitInsights} from './weeklyHabitInsights.js';import {validCalendarDate,shiftDate,calendarWeekStart,profileTimezone} from './dates.js';
+export function activityWeek(today,offset=0){if(!validCalendarDate(today)||!Number.isInteger(offset)||offset>0||offset< -51)throw Error('Invalid activity week');return shiftDate(calendarWeekStart(today),offset*7);}
+export function weeklyActivity(value,week,today,timezone){
+ readWeeklyInsight(value,week);if(!validCalendarDate(today)||calendarWeekStart(week)!==week||week>activityWeek(today)||week<activityWeek(today,-51)||value.observedThrough!==(value.weekEnd<today?value.weekEnd:today)||value.timezone!==profileTimezone(timezone)||value.focusMinutes<value.focusSessions*25||value.focusMinutes>value.focusSessions*120)throw Error('Invalid weekly activity');
+ const days=[];let recordedDays=0;for(let date=week;date<=value.observedThrough;date=shiftDate(date,1)){const evidence=value.evidence.filter(row=>row.date===date),counts={completed:0,failed:0,skipped:0};for(const row of evidence)counts[{COMPLETED:'completed',FAILED:'failed',SKIPPED:'skipped'}[row.status]]++;if(evidence.length)recordedDays++;days.push({date,...counts,sourceIds:evidence.map(row=>row.id)});}
+ return {weekStart:week,observedThrough:value.observedThrough,days,recordedDays,completed:value.completed,failed:value.failed,skipped:value.skipped,focusSessions:value.focusSessions,focusMinutes:value.focusMinutes,habits:weeklyHabitInsights(value)};
+}

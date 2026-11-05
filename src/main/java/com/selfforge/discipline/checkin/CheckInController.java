@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static com.selfforge.discipline.checkin.CheckInRequests.UpsertCheckInRequest;
+import static com.selfforge.discipline.checkin.CheckInRequests.CompleteCheckInsRequest;
 
 @RestController
 @RequestMapping("/api/check-ins")
@@ -42,5 +43,14 @@ public class CheckInController {
     @ResponseStatus(HttpStatus.CREATED)
     public CheckInResponse upsert(@Valid @RequestBody UpsertCheckInRequest request, HttpServletRequest servletRequest) {
         return checkInService.upsert(currentUserService.requireUser(servletRequest), request);
+    }
+
+    @PostMapping("/batch-complete")
+    @ResponseStatus(HttpStatus.CREATED)
+    public BatchCheckInResponse completeBatch(
+            @Valid @RequestBody CompleteCheckInsRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        return checkInService.completeTodayBatch(currentUserService.requireUser(servletRequest), request);
     }
 }

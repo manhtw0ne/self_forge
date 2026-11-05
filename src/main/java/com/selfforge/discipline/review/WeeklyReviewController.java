@@ -19,18 +19,33 @@ import java.util.List;
 @RequestMapping("/api/weekly-review")
 public class WeeklyReviewController {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private final UserTime userTime;
+    private final com.selfforge.discipline.auth.AppUserRepository users;
 
     private final WeeklyReviewRepository reviewRepository;
     private final CurrentUserService currentUserService;
 
-    public WeeklyReviewController(WeeklyReviewRepository reviewRepository, CurrentUserService currentUserService, UserTime userTime) {
+    public WeeklyReviewController(WeeklyReviewRepository reviewRepository, CurrentUserService currentUserService, UserTime userTime, com.selfforge.discipline.auth.AppUserRepository users) {
         this.userTime = userTime;
+        this.users = users;
         this.reviewRepository = reviewRepository;
         this.currentUserService = currentUserService;
     }
 
-    public record ReviewRequest(String wins, String improvements, String nextWeekPlan, int rating) {}
+    public record ReviewRequest(
+            @jakarta.validation.constraints.Size(max = 2000) String wins,
+            @jakarta.validation.constraints.Size(max = 2000) String improvements,
+            @jakarta.validation.constraints.Size(max = 2000) String nextWeekPlan,
+            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(5) int rating, LocalDate weekStart, @jakarta.validation.Valid ReviewSnapshot expected) {}
+    public record ReviewSnapshot(Long id,
+            @jakarta.validation.constraints.Size(max = 2000) String wins,
+            @jakarta.validation.constraints.Size(max = 2000) String improvements,
+            @jakarta.validation.constraints.Size(max = 2000) String nextWeekPlan,
+            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(5) Integer rating) {}
+    private static String text(String value) { return value == null ? "" : value; }
     public record ReviewResponse(Long id, LocalDate weekStart, String wins, String improvements, String nextWeekPlan, int rating) {
         static ReviewResponse from(WeeklyReview r) {
             return new ReviewResponse(r.getId(), r.getWeekStart(), r.getWins(), r.getImprovements(), r.getNextWeekPlan(), r.getRating());
@@ -46,12 +61,42 @@ public class WeeklyReviewController {
                 .orElse(null);
     }
 
+    public record ReviewContext(LocalDate weekStart, ReviewResponse review) {}
+
+    @GetMapping("/context")
+    public ReviewContext context(HttpServletRequest request) {
+        AppUser user = currentUserService.requireUser(request);
+        LocalDate week = userTime.today(user).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        return new ReviewContext(week, reviewRepository.findByUserIdAndWeekStart(user.getId(), week)
+                .map(ReviewResponse::from).orElse(null));
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ReviewResponse save(@RequestBody ReviewRequest req, HttpServletRequest request) {
-        AppUser user = currentUserService.requireUser(request);
+    public ReviewResponse save(@jakarta.validation.Valid @RequestBody ReviewRequest req, HttpServletRequest request) {
+        AppUser user = users.lockById(currentUserService.requireUser(request).getId())
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        entityManager.refresh(user);
+        currentUserService.requireUser(request);
+        if (!user.isPremium()) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Tính năng này cần Premium đang hoạt động.");
+        }
         LocalDate weekStart = userTime.today(user).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        WeeklyReview review = reviewRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
+        if (req.weekStart() != null && !req.weekStart().equals(weekStart)) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,
+                    "Tuần đã thay đổi. Hãy giữ lại nội dung và tải lại trang trước khi lưu.");
+        }
+        var previous = reviewRepository.findByUserIdAndWeekStart(user.getId(), weekStart);
+        if (req.expected() != null) {
+            var expected = req.expected(); var current = previous.orElse(null);
+            boolean matches = current == null ? expected.id() == null :
+                    java.util.Objects.equals(expected.id(), current.getId()) &&
+                    text(expected.wins()).equals(text(current.getWins())) && text(expected.improvements()).equals(text(current.getImprovements())) &&
+                    text(expected.nextWeekPlan()).equals(text(current.getNextWeekPlan())) && java.util.Objects.equals(expected.rating(), current.getRating());
+            if (!matches) throw new IllegalStateException("Nội dung trên máy chủ đã thay đổi. Bản nháp được giữ; tải bản mới trước khi lưu tiếp.");
+        }
+        WeeklyReview review = previous
                 .map(existing -> {
                     existing.update(req.wins(), req.improvements(), req.nextWeekPlan(), req.rating());
                     return existing;

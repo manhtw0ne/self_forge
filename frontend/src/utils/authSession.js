@@ -1,3 +1,4 @@
+import { safeReturnPath } from './returnPath.js';
 // Only the credential that failed may invalidate the currently stored session.
 export async function restoreSession(loadUser, getToken, token) {
   try {
@@ -26,4 +27,16 @@ export async function revokeStoredSession(storage, revoke, onCleared) {
       onCleared();
     }
   }
+}
+
+export function expireFailedSession(error, getStorage, returnPath, redirect) {
+  try {
+    const storage = getStorage();
+    const token = storage.getItem('sf_token');
+    if (!shouldExpireSession(error, token)) return false;
+    storage.removeItem('sf_token');
+    if (storage.getItem('sf_token') === token) return false;
+    redirect('/login?next=' + encodeURIComponent(safeReturnPath(returnPath)));
+    return true;
+  } catch { return false; }
 }

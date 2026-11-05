@@ -15,6 +15,9 @@ public class PasswordHasher {
     private static final int KEY_LENGTH = 256;
     private static final int SALT_LENGTH = 16;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    // This value is never an account password. It exists solely so a missing
+    // account costs the same PBKDF2 work as a failed password verification.
+    private final String missingAccountHash = hash("selfforge-missing-account");
 
     public String hash(String password) {
         byte[] salt = new byte[SALT_LENGTH];
@@ -33,6 +36,11 @@ public class PasswordHasher {
         byte[] expectedHash = Base64.getDecoder().decode(parts[3]);
         byte[] actualHash = pbkdf2(password, salt, iterations);
         return MessageDigest.isEqual(expectedHash, actualHash);
+    }
+
+    /** Performs password-verification work before rejecting an unknown email. */
+    public void consumeMissingAccountWork(String password) {
+        matches(password, missingAccountHash);
     }
 
     private byte[] pbkdf2(String password, byte[] salt, int iterations) {

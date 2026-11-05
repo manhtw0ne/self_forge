@@ -1,15 +1,15 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-
-const ThemeContext = createContext(null);
+import { readTheme, saveTheme } from '../utils/themePreference';
+import { useState, useEffect } from 'react';
+import { ThemeContext } from './theme-context';
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('selfforge-theme') || 'dark';
+    return readTheme(() => window.localStorage);
   });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('selfforge-theme', theme);
+    saveTheme(() => window.localStorage, theme);
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -21,8 +21,3 @@ export function ThemeProvider({ children }) {
   );
 }
 
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
-  return ctx;
-}

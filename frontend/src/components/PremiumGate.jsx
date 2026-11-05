@@ -1,6 +1,6 @@
 import { useLanguage } from '../context/useLanguage';
 import { useNavigate } from 'react-router-dom';
-import { usePremium } from '../context/PremiumContext';
+import { usePremium } from '../context/usePremium';
 
 /**
  * Wraps content that requires Premium.
@@ -29,10 +29,10 @@ export default function PremiumGate({ children, mode = 'page', feature = '' }) {
               : t('Tính năng này dành cho người dùng Premium.')}
           </p>
           <p className="premium-gate-sub">
-            {t('Nâng cấp để mở khóa toàn bộ tính năng nâng cao!')}
+            {t('Premium chưa mở bán. Bạn vẫn có thể dùng các chức năng miễn phí.')}
           </p>
           <button className="btn btn-premium" onClick={() => navigate('/premium')}>
-            {t('Xem gói Premium')}
+            {t('Xem thông tin Premium')}
           </button>
         </div>
       </div>

@@ -23,8 +23,10 @@ public class HabitService {
     private final AppUserRepository users;
     private final HabitBatchReceiptRepository receipts;
     private final com.fasterxml.jackson.databind.ObjectMapper json;
+    private final HabitStateHistoryService history;
 
-    public HabitService(HabitRepository habitRepository, CategoryService categoryService, AppUserRepository users, HabitBatchReceiptRepository receipts, com.fasterxml.jackson.databind.ObjectMapper json) {
+    public HabitService(HabitRepository habitRepository, CategoryService categoryService, AppUserRepository users, HabitBatchReceiptRepository receipts, com.fasterxml.jackson.databind.ObjectMapper json, HabitStateHistoryService history) {
+        this.history = history;
         this.receipts = receipts; this.json = json;
         this.users = users;
         this.habitRepository = habitRepository;
@@ -61,6 +63,20 @@ public class HabitService {
         return habit;
     }
 
+    /**
+     * New work must not be attached to a paused habit. Existing records remain
+     * readable and correctable, but callers that begin new activity use this
+     * owner-scoped guard before changing persistent data.
+     */
+    @Transactional(readOnly = true)
+    public Habit getActiveHabit(AppUser user, Long id) {
+        Habit habit = getHabit(user, id);
+        if (!habit.isActive()) {
+            throw new IllegalStateException("Thói quen đã tắt. Hãy bật lại trước khi tạo hoạt động mới.");
+        }
+        return habit;
+    }
+
     @Transactional(readOnly = true)
     public List<HabitResponse> listInactive(AppUser user) {
         return habitRepository.findByUserIdAndActiveFalseOrderByCreatedAtDesc(user.getId()).stream()
@@ -80,9 +96,12 @@ public class HabitService {
                 targetPerWeek,
                 request.points(),
                 category,
-                request.tags()
+                request.tags(),
+                HabitSchedule.normalizeOrDefault(request.scheduledDays(), targetPerWeek)
         );
-        return HabitResponse.from(habitRepository.save(habit));
+        habitRepository.save(habit);
+        history.created(habit);
+        return HabitResponse.from(habit);
     }
 
     public List<HabitResponse> createBatch(AppUser user, List<CreateHabitRequest> requests, java.util.UUID requestId) {
@@ -108,19 +127,49 @@ public class HabitService {
         return result;
     }
 
+    public List<HabitResponse> assignCategory(AppUser user,Long categoryId,List<HabitController.CategoryAssignment> items){
+        users.lockById(user.getId()).orElseThrow();
+        var unique=new java.util.HashSet<Long>();
+        for(var item:items)if(!unique.add(item.habitId()))throw new IllegalArgumentException("Danh sách thói quen không được trùng.");
+        Category category=categoryService.getById(user,categoryId);
+        var selected=new java.util.ArrayList<Habit>();
+        for(var item:items)selected.add(getHabit(user,item.habitId()));
+        boolean applied=selected.stream().allMatch(habit->java.util.Objects.equals(habit.getCategory()==null?null:habit.getCategory().getId(),categoryId));
+        if(!applied){
+            for(int i=0;i<selected.size();i++){
+                Long current=selected.get(i).getCategory()==null?null:selected.get(i).getCategory().getId();
+                if(!java.util.Objects.equals(current,items.get(i).expected().categoryId()))throw new IllegalStateException("Danh mục của thói quen đã thay đổi. Tải lại danh sách trước khi áp dụng cả nhóm.");
+            }
+            for(var habit:selected)habit.setCategory(category);
+        }
+        return selected.stream().map(HabitResponse::from).toList();
+    }
+
     public HabitResponse update(AppUser user, Long id, UpdateHabitRequest request) {
         user = users.lockById(user.getId()).orElseThrow();
         Habit habit = getHabit(user, id);
         if (Boolean.TRUE.equals(request.clearCategory()) && request.categoryId() != null)
             throw new IllegalArgumentException("Cannot both clear and assign a category");
+        if (request.expected() != null && !matches(habit, request.expected())) {
+            throw new IllegalStateException("Thói quen đã thay đổi trên máy chủ. Bản nháp của bạn được giữ lại; tải bản mới trước khi sửa tiếp.");
+        }
         if (Boolean.TRUE.equals(request.active()) && !habit.isActive()) requireCapacity(user);
+        int previousTarget = habit.getTargetPerWeek();
+        String previousSchedule = habit.getScheduledDays();
+        boolean previouslyActive = habit.isActive();
+        int nextTarget = request.targetPerWeek() == null ? habit.getTargetPerWeek() : request.targetPerWeek();
+        String nextSchedule = request.scheduledDays() == null
+                ? (request.targetPerWeek() == null ? habit.getScheduledDays() : HabitSchedule.defaultFor(nextTarget))
+                : HabitSchedule.normalizeOrDefault(request.scheduledDays(), nextTarget);
+        HabitSchedule.requireMatchesTarget(nextSchedule, nextTarget);
         habit.update(
                 request.name(),
                 request.description(),
                 request.difficulty(),
                 request.targetPerWeek(),
                 request.points(),
-                request.active()
+                request.active(),
+                nextSchedule
         );
         if (Boolean.TRUE.equals(request.clearCategory())) habit.setCategory(null);
         if (request.categoryId() != null) {
@@ -129,7 +178,21 @@ public class HabitService {
         if (request.tags() != null) {
             habit.setTags(request.tags());
         }
+        history.changed(habit, previousTarget, previousSchedule, previouslyActive);
         return HabitResponse.from(habit);
+    }
+
+    private boolean matches(Habit habit, HabitRequests.HabitSnapshot expected) {
+        Long categoryId = habit.getCategory() == null ? null : habit.getCategory().getId();
+        return java.util.Objects.equals(habit.getName(), expected.name())
+                && java.util.Objects.equals(habit.getDescription(), expected.description())
+                && habit.getDifficulty() == expected.difficulty()
+                && habit.getTargetPerWeek() == expected.targetPerWeek()
+                && (expected.scheduledDays() == null || java.util.Objects.equals(habit.getScheduledDays(), expected.scheduledDays()))
+                && habit.getPoints() == expected.points()
+                && habit.isActive() == expected.active()
+                && java.util.Objects.equals(categoryId, expected.categoryId())
+                && java.util.Objects.equals(habit.getTags(), expected.tags());
     }
 
     public List<HabitResponse> reorder(AppUser user, List<HabitController.ReorderItem> items) {
@@ -151,9 +214,7 @@ public class HabitService {
     }
 
     public void deactivate(AppUser user, Long id) {
-        user = users.lockById(user.getId()).orElseThrow();
-        Habit habit = getHabit(user, id);
-        habit.update(null, null, null, null, null, false);
+        update(user, id, new UpdateHabitRequest(null, null, null, null, null, false, null, null, null));
     }
 
     private void requireCapacity(AppUser user) {

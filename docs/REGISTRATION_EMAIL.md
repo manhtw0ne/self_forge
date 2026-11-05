@@ -3,7 +3,7 @@
 Ngày: 26/09/2026. Chưa deploy; chưa gửi email thật.
 
 ## Bật chức năng
-1. Cấu hình SMTP và địa chỉ gửi theo PASSWORD_RESET_EMAIL.md. Adapter gửi OTP hiện dùng chung cấu hình PASSWORD_RESET_ENABLED=true và PASSWORD_RESET_FROM.
+1. Cấu hình SMTP **hoặc Resend** và địa chỉ gửi theo PASSWORD_RESET_EMAIL.md. Adapter gửi OTP hiện dùng chung cấu hình PASSWORD_RESET_ENABLED=true và PASSWORD_RESET_FROM.
 2. Đặt REGISTRATION_REQUIRE_EMAIL_VERIFICATION=true rồi restart backend.
 3. GET /api/auth/registration/availability phải trả required=true, enabled=true.
 
@@ -24,7 +24,7 @@ Không gửi SMTP password hoặc OTP vào chat.
 Dùng địa chỉ bạn sở hữu chưa có tài khoản; nhận mã, thử sai mã, nhập đúng và kiểm tra đăng nhập. Thử SMTP tắt khi vẫn bật required: đăng ký phải bị chặn, không tạo tài khoản. Kiểm tra bản frontend và backend cùng phiên bản.
 
 ## Còn lại trước public
-- Cần rate limit tổng/IP hoặc CAPTCHA, đặc biệt endpoint gửi đến email chưa đăng ký; hạn theo email không chặn việc lạm dụng nhiều địa chỉ.
+- Ứng dụng đã giới hạn theo email, tổng hệ thống và mạng/thiết bị để chặn xoay nhiều địa chỉ; scope mạng chỉ lưu SHA-256. CAPTCHA và giới hạn ở ingress vẫn nên được cân nhắc khi lưu lượng public tăng.
 - Chưa có cleanup challenge hết hạn; không xóa các bộ đếm đang còn trong cửa sổ quota.
 - Chưa nghiệm thu email thật, trình duyệt hoặc PostgreSQL V5.
 - SMTP đồng bộ trong transaction; chưa có outbox. Cần theo dõi hiệu năng khi provider chậm.

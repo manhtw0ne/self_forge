@@ -41,7 +41,7 @@ class PasswordResetTests {
     }
     private String email() { return UUID.randomUUID() + "@example.com"; }
     private String register(String email) {
-        return auth.register(new AuthRequests.RegisterRequest(email, "Reset tester", "password123")).token();
+        return auth.register(new AuthRequests.RegisterRequest(email, "Reset tester", "password123", null, null, true)).token();
     }
     private String request(String email) throws Exception {
         return mvc.perform(post("/api/auth/password-reset/request").contentType(MediaType.APPLICATION_JSON)

@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { english, initialLanguage, normalizeLanguage, translate, localizedCategory } from './language.js';
 
 test('saved preference wins and language variants are normalized', () => {
@@ -64,4 +67,41 @@ test('premium copy distinguishes proposed pricing from available payment', () =>
   assert.equal(translate('en', 'Premium chưa mở bán'), 'Premium is not yet for sale');
   assert.equal(translate('en', 'Tối đa 10 thói quen đang bật'), 'Up to 10 active habits');
   assert.equal(translate('en', 'Thời hạn dự kiến: 1 năm'), 'Proposed term: 1 year');
+});
+
+test('new dashboard and paused-habit messages remain usable in English', () => {
+  assert.equal(translate('en', 'Người mới bắt đầu với một bố cục gọn; chọn các phần bổ sung bạn muốn xem.'),
+    'New users start with a simpler layout; choose any additional sections you want to see.');
+  assert.equal(translate('en', 'Đang mở phần này...'), 'Opening this section…');
+  assert.equal(translate('en', 'Thói quen đã tắt. Hãy bật lại trước khi dùng bảo vệ streak.'),
+    'This habit is inactive. Reactivate it before using streak protection.');
+});
+
+test('an untranslated Vietnamese server detail has a clear English fallback', () => {
+  const source = 'Lỗi máy chủ mới chưa có bản dịch.';
+  assert.equal(translate('en', source), 'We could not complete this action. Review your input and try again.');
+  assert.equal(translate('vi', source), source);
+  assert.equal(translate('en', 'Unrecognized English detail'), 'Unrecognized English detail');
+});
+
+test('Vietnamese UI literals passed directly to translation have an English entry', () => {
+  const sourceRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const files = [];
+  const walk = directory => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(js|jsx)$/.test(entry.name) && !entry.name.endsWith('.test.js')) files.push(path);
+    }
+  };
+  walk(sourceRoot);
+  const untranslated = [];
+  const directTranslation = /\bt\(\s*(['"])([^'"\n]+)\1/g;
+  for (const file of files) {
+    for (const match of readFileSync(file, 'utf8').matchAll(directTranslation)) {
+      const source = match[2];
+      if (/[À-ỹ]/.test(source) && !Object.hasOwn(english, source)) untranslated.push({ file, source });
+    }
+  }
+  assert.deepEqual(untranslated, []);
 });

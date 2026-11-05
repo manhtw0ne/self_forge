@@ -7,7 +7,10 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/ ./
-RUN npm run lint && npm test && npm run build
+# The frontend build verifies every React route is covered by the Spring SPA
+# fallback. Copy only that contract into this isolated stage.
+COPY src/main/java/com/selfforge/discipline/common/SpaController.java /app/src/main/java/com/selfforge/discipline/common/SpaController.java
+RUN npm run lint && npm test && npm run test:account-sync && npm run test:habit-state-history && npm run test:spa-routes && npm run test:coach && npm run test:support && npm run test:native && npm run build
 
 # ============================================
 # Stage 2: Build Backend
@@ -48,4 +51,5 @@ ENV SPRING_PROFILES_ACTIVE=prod
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
+# Reserve memory for metaspace, code cache, threads and native buffers in small containers.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=40.0", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]

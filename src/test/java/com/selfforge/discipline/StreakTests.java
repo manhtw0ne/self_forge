@@ -2,8 +2,12 @@ package com.selfforge.discipline;
 
 import com.selfforge.discipline.checkin.*;
 import com.selfforge.discipline.habit.Habit;
+import com.selfforge.discipline.habit.HabitStateHistoryRepository;
+import com.selfforge.discipline.habit.HabitStateHistory;
 import com.selfforge.discipline.streak.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import java.time.LocalDate;
 import java.time.DayOfWeek;
 import java.time.temporal.TemporalAdjusters;
@@ -16,7 +20,8 @@ class StreakTests {
     private final LocalDate today = LocalDate.of(2026, 9, 24);
     private final DailyCheckInRepository checks = mock(DailyCheckInRepository.class);
     private final StreakFreezeRepository freezes = mock(StreakFreezeRepository.class);
-    private final StreakService service = new StreakService(checks, freezes);
+    private final HabitStateHistoryRepository stateHistory = mock(HabitStateHistoryRepository.class);
+    private final StreakService service = new StreakService(checks, freezes, stateHistory);
     private final Map<LocalDate, CheckInStatus> history = new HashMap<>();
     private final Set<LocalDate> protectedDays = new HashSet<>();
 
@@ -32,6 +37,8 @@ class StreakTests {
                                 && !d.isAfter(call.getArgument(3, LocalDate.class)))
                         .map(d -> { var freeze = mock(StreakFreeze.class);
                             when(freeze.getFreezeDate()).thenReturn(d); return freeze; }).toList());
+        when(stateHistory.findByHabit_IdAndCalendarDateLessThanEqualOrderByCalendarDateDescIdDesc(eq(2L), any()))
+                .thenReturn(List.of());
     }
 
     @Test void countsBeyondOneWindowAndBatchesQueries() {
@@ -39,6 +46,8 @@ class StreakTests {
         assertEquals(300, service.current(1L, 2L, today));
         verify(checks, times(3)).findByHabit_User_IdAndHabitIdAndDateBetween(eq(1L), eq(2L), any(), any());
         verify(freezes, times(3)).findByUserIdAndHabitIdAndFreezeDateBetween(eq(1L), eq(2L), any(), any());
+        verify(stateHistory, times(1))
+                .findByHabit_IdAndCalendarDateLessThanEqualOrderByCalendarDateDescIdDesc(eq(2L), eq(today));
     }
 
     @Test void freezeBridgesWindowBoundaryWithoutAddingCompletedDays() {
@@ -74,6 +83,90 @@ class StreakTests {
 
     // ---- targetPerWeek tests ----
 
+    @Test void increasingToDailyKeepsUnrecordedHistoricalWeekendAsRest() {
+        historicalWeekBeforeDailyChange(false);
+        assertEquals(5, service.endingOn(1L, 2L, today, 7));
+        assertEquals(5, service.current(1L, 2L, today, 7));
+    }
+
+    @Test void increasingToDailyKeepsLegacySkippedHistoricalWeekendAsRest() {
+        historicalWeekBeforeDailyChange(true);
+        assertEquals(5, service.endingOn(1L, 2L, today, 7));
+    }
+
+    @Test void historicalRequiredDayStillBreaksEvenWhenCurrentScheduleHasARestDay() {
+        historicalWeekBeforeDailyChange(false);
+        var daily = mock(HabitStateHistory.class);
+        when(daily.getCalendarDate()).thenReturn(today.minusDays(10));
+        when(daily.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI,SAT,SUN");
+        when(daily.isActive()).thenReturn(true);
+        when(stateHistory.findByHabit_IdAndCalendarDateLessThanEqualOrderByCalendarDateDescIdDesc(eq(2L), any()))
+                .thenReturn(List.of(daily));
+        assertEquals(4, service.endingOn(1L, 2L, today, 5));
+    }
+
+    private void historicalWeekBeforeDailyChange(boolean skippedWeekend) {
+        // Thu 24 switches to daily; the earlier weekend was recorded as rest.
+        var daily = mock(HabitStateHistory.class);
+        when(daily.getCalendarDate()).thenReturn(today);
+        when(daily.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI,SAT,SUN");
+        when(daily.isActive()).thenReturn(true);
+        var weekdays = mock(HabitStateHistory.class);
+        when(weekdays.getCalendarDate()).thenReturn(today.minusDays(10));
+        when(weekdays.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI");
+        when(weekdays.isActive()).thenReturn(true);
+        when(stateHistory.findByHabit_IdAndCalendarDateLessThanEqualOrderByCalendarDateDescIdDesc(eq(2L), any()))
+                .thenReturn(List.of(daily, weekdays));
+        for (int i = 0; i < 4; i++) history.put(today.minusDays(i), CheckInStatus.COMPLETED);
+        history.put(today.minusDays(6), CheckInStatus.COMPLETED); // previous Friday
+        if (skippedWeekend) {
+            history.put(today.minusDays(4), CheckInStatus.SKIPPED);
+            history.put(today.minusDays(5), CheckInStatus.SKIPPED);
+        }
+    }
+
+    @Test void recordedPauseWindowBridgesStreakWithoutAddingCompletedDays() {
+        var resumed = mock(HabitStateHistory.class);
+        when(resumed.getCalendarDate()).thenReturn(today);
+        when(resumed.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI,SAT,SUN");
+        when(resumed.isActive()).thenReturn(true);
+        var paused = mock(HabitStateHistory.class);
+        when(paused.getCalendarDate()).thenReturn(today.minusDays(2));
+        when(paused.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI,SAT,SUN");
+        when(paused.isActive()).thenReturn(false);
+        when(stateHistory.findByHabit_IdAndCalendarDateLessThanEqualOrderByCalendarDateDescIdDesc(eq(2L), any()))
+                .thenReturn(List.of(resumed, paused));
+        history.put(today, CheckInStatus.COMPLETED);
+        history.put(today.minusDays(3), CheckInStatus.COMPLETED);
+
+        assertEquals(2, service.endingOn(1L, 2L, today, 7));
+    }
+
+    @ParameterizedTest
+    @EnumSource(CheckInStatus.class)
+    void savedCheckInStillCountsOrBreaksOnARecordedPauseDay(CheckInStatus status) {
+        var resumed = mock(HabitStateHistory.class);
+        when(resumed.getCalendarDate()).thenReturn(today);
+        when(resumed.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI,SAT,SUN");
+        when(resumed.isActive()).thenReturn(true);
+        var paused = mock(HabitStateHistory.class);
+        when(paused.getCalendarDate()).thenReturn(today.minusDays(1));
+        when(paused.getScheduledDays()).thenReturn("MON,TUE,WED,THU,FRI,SAT,SUN");
+        when(paused.isActive()).thenReturn(false);
+        when(stateHistory.findByHabit_IdAndCalendarDateLessThanEqualOrderByCalendarDateDescIdDesc(eq(2L), any()))
+                .thenReturn(List.of(resumed, paused));
+        history.put(today, CheckInStatus.COMPLETED);
+        history.put(today.minusDays(1), status);
+        history.put(today.minusDays(2), CheckInStatus.COMPLETED);
+
+        assertEquals(status == CheckInStatus.COMPLETED ? 3 : 1,
+                service.endingOn(1L, 2L, today, 7));
+        // A freeze still protects a failed/skipped saved day; a completion counts once.
+        protectedDays.add(today.minusDays(1));
+        assertEquals(status == CheckInStatus.COMPLETED ? 3 : 2,
+                service.endingOn(1L, 2L, today, 7));
+    }
+
     @Test void skippedOnNonRequiredDayDoesNotBreakStreakForPartialWeekHabit() {
         // today = 2026-09-24 (Thu). With targetPerWeek=5, required days are Mon/Tue/Wed/Thu/Fri.
         // Sunday (2026-09-20) is NOT required for targetPerWeek=5.
@@ -96,6 +189,18 @@ class StreakTests {
         // With targetPerWeek=5: SKIPPED Sunday does not break streak → streak=5 (4 required days + 1 Sat completed)
         int streak5 = service.endingOn(1L, 2L, today, 5);
         assertEquals(5, streak5);
+    }
+
+    @Test void missingRestDayDoesNotNeedAManualSkippedCheckIn() {
+        LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        history.put(monday, CheckInStatus.COMPLETED);
+        history.put(monday.plusDays(1), CheckInStatus.COMPLETED);
+        history.put(monday.plusDays(2), CheckInStatus.COMPLETED);
+        history.put(monday.plusDays(3), CheckInStatus.COMPLETED);
+        // Sunday is intentionally absent. It is a rest day for the legacy 5/week schedule,
+        // so the completed Saturday before it remains part of the streak.
+        history.put(monday.minusDays(2), CheckInStatus.COMPLETED);
+        assertEquals(5, service.endingOn(1L, 2L, monday.plusDays(3), 5));
     }
 
     @Test void skippedOnRequiredDayStillBreaksStreak() {

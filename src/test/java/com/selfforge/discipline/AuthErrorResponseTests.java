@@ -18,7 +18,7 @@ class AuthErrorResponseTests {
         when(service.login(any())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                 "Invalid email or password", new IllegalStateException("INTERNAL_SECRET")));
         var mvc = MockMvcBuilders.standaloneSetup(new AuthController(service,
-                mock(CurrentUserService.class), new LoginAttemptLimiter(Clock.systemUTC())))
+                mock(CurrentUserService.class), new LoginAttemptLimiter(Clock.systemUTC()), new ClientAddressResolver(false)))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
         mvc.perform(post("/api/auth/login").contentType("application/json")
                 .content("{\"email\":\"user@example.com\",\"password\":\"wrong-password\"}"))
