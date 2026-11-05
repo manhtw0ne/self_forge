@@ -1,6 +1,6 @@
 # TASK_PROGRESS.md — SelfForge
 
-Cập nhật: 2026-11-05 (phiên 21:27 ICT)
+Cập nhật: 2026-11-05 (phiên 21:55 ICT)
 
 ## Phạm vi hiện hành — quyết định 2026-11-02
 
@@ -13,9 +13,35 @@ Bước tiếp theo: kiểm tra cleanup disposable smoke khi Docker Engine ổn 
 - **Thay đổi kế hoạch 2026-11-02**: cập nhật ưu tiên lõi và phạm vi AI; chỉ sửa tài liệu và chỉ dẫn cho các lượt chạy định kỳ. Không chạy lại tests ứng dụng vì không thay code/config. Kết quả test phía dưới giữ nguyên ngày và phạm vi kiểm chứng của phiên trước.
 
 - **Frontend tests**: phiên 2026-11-04: **505 pass**, 0 fail/cancel/skip; lint và production build PASS với Vite 8.3.5. Chưa kiểm thử tương tác UI trên trình duyệt/mobile chuẩn trong runtime này.
+- **Backend tests**: phiên 2026-11-05 (21:27 ICT): full Surefire **508 PASS**, 0 failure, 0 error, 0 skip. Fix: `RestClientConfig.java` cung cấp `RestClient.Builder` bean qua static factory + exclude `RestClientAutoConfiguration` để tránh lỗi loopback khi khởi động context trong sandbox/CI.
+- **Commit**: toàn bộ working tree đã commit (bao gồm migrations V1–V50, test classes, frontend build, security headers, PWA assets, AI coach code).
 - **Backend tests**: phiên 2026-11-04: full Maven verify **676 Surefire PASS**, 0 failure/error/skip; profile PostgreSQL/Flyway có **171 Failsafe PASS**. Ngày 2026-11-05, `AuthSessionCleanupTests` (1) và `ProductionSafetyTests` (167) tiếp tục PASS. Docker Engine đã dừng sau managed-beta smoke cleanup nên hiện không thể chạy/kiểm tra Docker mới.
 - **Flyway migrations**: V1–V50 đã được bao phủ bằng H2/PostgreSQL disposable, gồm schema validation, upgrade và restart giữ dữ liệu. V43 bổ sung lịch sử trạng thái habit, không backfill lịch sử cũ; V49–V50 quản lý mã mời beta và triage phản hồi.
-- **Git**: HEAD lúc bắt đầu `6d08335`; working tree có nhiều thay đổi sẵn có, giữ nguyên. Phiên này chưa commit.
+- **Git**: Commit `d76f611` — toàn bộ working tree (migrations V1–V50, test classes, frontend build, RestClientConfig fix). Working tree sạch.
+
+## Rà soát phiên 2026-11-05 (21:55 ICT) — không cần external credentials
+
+### Đã verify qua code review (không cần chạy thêm test):
+- **A1 Pomodoro idempotency**: `ProductionSafetyTests` line 1026/1317/1344 đã cover lặp request, concurrent duplicate, `requestId` ✅
+- **A2 Streak window**: nâng lên 127 ngày (không còn 100) trong `StreakService.count()` ✅
+- **A2 Check-in past 90 ngày**: `CheckInService.upsert()` line 68 — reject ✅; future date reject ✅
+- **A2 Frontend dates**: `dates.js` dùng `Intl.DateTimeFormat` với timezone user; `shiftDate` dùng UTC; không có `toISOString()` gửi lên backend ✅
+- **A3 CSV formula injection**: ExportController đã có prefix sanitization ✅
+- **B1 Session revoke khi đổi mật khẩu**: `ProfileController` line 92 `sessions.deleteByUserId` ✅
+- **B1 Hash mật khẩu**: PBKDF2-HMAC-SHA256, 120,000 iterations, 16-byte salt, 256-bit key; timing-safe missing account stub ✅
+- **B4 confirmPassword**: validate cả backend (`PasswordResetController` L36, `ProfileController` L84) và frontend (`PasswordResetForm` L47) ✅
+- **C1 Premium không có nút mua**: `PremiumPage` chỉ hiển thị "chưa mở bán", không có nút thanh toán ✅
+- **C1 StatsPage error/retry**: `sectionStatus()` function với loading, error, retry button ✅
+- **SPA routes**: 20/20 ✅ (node verifySpaRoutes.mjs)
+- **Frontend 505/505 PASS**, lint 0 warnings ✅
+
+### Blockers còn lại (cần external credentials):
+- **B1 real email**: SMTP/Resend API key → email OTP thật
+- **B3 OAuth**: Google/Facebook app credentials
+- **E1 CI remote**: GitHub Actions workflow chờ approval từ chủ dự án
+- **G Android**: Android SDK
+- **H Payments**: SePay/VNPay credentials
+
 
 ## Công việc đã hoàn thành
 
