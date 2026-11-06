@@ -928,6 +928,12 @@ a:hover {
   gap: 0.5rem;
 }
 
+.password-confirmation-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
 /* ========== Modal ========== */
 .modal-overlay {
   position: fixed;
@@ -1735,6 +1741,20 @@ a:hover {
   text-transform: uppercase;
   color: var(--accent-primary);
 }
+.premium-availability-card {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.premium-availability-card p { max-width: 66ch; }
+.premium-availability-card .btn { justify-self: start; }
+.premium-availability-error {
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+}
 
 .premium-plans {
   display: grid;
@@ -1783,6 +1803,15 @@ a:hover {
   font-size: 0.875rem;
 }
 .premium-plan-card .btn { margin-top: auto; width: 100%; }
+.premium-plan-unavailable {
+  margin-top: auto;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
 .btn-premium { background: var(--accent-gradient); color: white; }
 .btn-premium:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 4px; }
 
@@ -2026,9 +2055,11 @@ button.heatmap-cell:disabled { opacity: 0.35; cursor: default; transform: none; 
 .public-information-page { min-height:100vh; padding:clamp(1rem,4vw,3rem); background:var(--bg-primary); color:var(--text-primary); }
 .public-information-header { max-width:900px; margin:0 auto 1.25rem; display:flex; gap:1rem; align-items:center; justify-content:space-between; flex-wrap:wrap; }
 .public-information-header .brand-heading { margin:0; text-decoration:none; color:var(--text-primary); }
-.public-information-header nav, .auth-legal-links { display:flex; gap:.85rem; align-items:center; justify-content:center; flex-wrap:wrap; }
+.public-information-header-actions, .public-information-header nav, .auth-legal-links { display:flex; gap:.85rem; align-items:center; justify-content:center; flex-wrap:wrap; }
 .public-information-header nav a, .auth-legal-links a { color:var(--accent-primary); text-underline-offset:3px; }
 .public-information-header nav a[aria-current="page"] { font-weight:700; color:var(--text-primary); }
+.language-selector-compact { display:flex; align-items:center; gap:.5rem; margin:0; font-size:.85rem; white-space:nowrap; }
+.language-selector-compact .form-input { width:auto; min-width:7.5rem; padding:.45rem .55rem; }
 .public-information-card { max-width:900px; margin:0 auto; padding:clamp(1.25rem,4vw,3rem); background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); }
 .public-information-card h1 { margin:.15rem 0 1.25rem; }
 .public-information-card h2 { margin:2rem 0 .65rem; font-size:1.18rem; }
@@ -2053,6 +2084,21 @@ button.heatmap-cell:disabled { opacity: 0.35; cursor: default; transform: none; 
 /* Public entry point: deliberately calm, so the first visit explains the core product before registration. */
 .landing-page { max-width: 1120px; margin: 0 auto; padding: 1.25rem clamp(1rem, 4vw, 3rem) 3rem; }
 .landing-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.landing-nav-actions { display: flex; align-items: center; gap: 0.75rem; }
+.landing-language-selector { display: inline-flex; }
+.landing-language-selector select {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.landing-language-selector select:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.landing-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; clip-path: inset(50%); }
 .landing-brand { display: inline-flex; align-items: center; gap: 0.65rem; color: var(--text-primary); font-weight: 800; font-size: 1.2rem; text-decoration: none; }
 .landing-brand img { border-radius: 0.7rem; }
 .landing-hero { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.75fr); gap: clamp(1.5rem, 5vw, 4rem); align-items: center; padding: clamp(3rem, 9vw, 7rem) 0; }

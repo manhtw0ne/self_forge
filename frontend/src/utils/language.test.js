@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { english, initialLanguage, normalizeLanguage, translate, localizedCategory } from './language.js';
+import { english, initialLanguage, normalizeLanguage, pendingAccountLanguage, translate, localizedCategory } from './language.js';
 
 test('saved preference wins and language variants are normalized', () => {
   assert.equal(initialLanguage({ getItem: () => 'vi' }, 'en-US'), 'vi');
@@ -15,6 +15,12 @@ test('blocked storage and unsupported languages have a safe fallback', () => {
   assert.equal(initialLanguage({ getItem: () => 'invalid' }, 'en-US'), 'en');
   assert.equal(initialLanguage({ getItem: () => { throw new Error('blocked'); } }, 'vi'), 'vi');
   assert.equal(initialLanguage(null, 'fr'), 'vi');
+});
+test('an explicit public language selection is synced only to an account without a saved preference', () => {
+  assert.equal(pendingAccountLanguage(null, 'en'), 'en');
+  assert.equal(pendingAccountLanguage(undefined, 'VI-vn'), 'vi');
+  assert.equal(pendingAccountLanguage('vi', 'en'), null);
+  assert.equal(pendingAccountLanguage('en', 'invalid'), null);
 });
 test('countdowns and user data stay intact while translating', () => {
   assert.equal(translate('en', 'Gửi lại sau {seconds}s', { seconds: 30 }), 'Resend in 30s');
@@ -65,6 +71,7 @@ test('settings and rewards translate parameterized messages and schedule days', 
 
 test('premium copy distinguishes proposed pricing from available payment', () => {
   assert.equal(translate('en', 'Premium chưa mở bán'), 'Premium is not yet for sale');
+  assert.equal(translate('en', 'Chưa mở bán'), 'Not yet for sale');
   assert.equal(translate('en', 'Tối đa 10 thói quen đang bật'), 'Up to 10 active habits');
   assert.equal(translate('en', 'Thời hạn dự kiến: 1 năm'), 'Proposed term: 1 year');
 });

@@ -9,8 +9,12 @@ import java.util.Map;
 @RestController
 public class HealthController {
     private final JdbcTemplate jdbc;
+    private final ReleaseInfo release;
 
-    public HealthController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public HealthController(JdbcTemplate jdbc, ReleaseInfo release) {
+        this.jdbc = jdbc;
+        this.release = release;
+    }
 
     /**
      * Answers whether this JVM can respond at all. Keep this independent of the
@@ -19,7 +23,7 @@ public class HealthController {
      */
     @GetMapping("/api/health/live")
     public Map<String, String> live() {
-        return Map.of("status", "UP");
+        return health("UP");
     }
 
     /**
@@ -30,9 +34,13 @@ public class HealthController {
     public ResponseEntity<Map<String, String>> ready() {
         try {
             jdbc.queryForObject("SELECT 1", Integer.class);
-            return ResponseEntity.ok(Map.of("status", "UP"));
+            return ResponseEntity.ok(health("UP"));
         } catch (org.springframework.dao.DataAccessException e) {
-            return ResponseEntity.status(503).body(Map.of("status", "DOWN"));
+            return ResponseEntity.status(503).body(health("DOWN"));
         }
+    }
+
+    private Map<String, String> health(String status) {
+        return Map.of("status", status, "release", release.release());
     }
 }

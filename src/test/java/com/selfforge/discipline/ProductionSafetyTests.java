@@ -1151,7 +1151,7 @@ class ProductionSafetyTests {
                 java.time.LocalDate.of(2026, 9, 20));
         var upgraded = org.flywaydb.core.Flyway.configure().dataSource(accountingDb.getDataSource())
                 .schemas(schema).defaultSchema(schema).locations("classpath:db/migration/postgresql").load();
-        org.junit.jupiter.api.Assertions.assertEquals(49, upgraded.migrate().migrationsExecuted);
+        org.junit.jupiter.api.Assertions.assertEquals(52, upgraded.migrate().migrationsExecuted);
         var row = accountingDb.queryForMap("select note, applied_xp, points_snapshot, target_per_week_snapshot from " + schemaSql + ".daily_check_in where id = 1");
         org.junit.jupiter.api.Assertions.assertEquals("Keep me", row.get("note"));
         org.junit.jupiter.api.Assertions.assertNull(row.get("applied_xp"));
@@ -2677,9 +2677,10 @@ class ProductionSafetyTests {
     }
 
     @Test void healthDoesNotExposeDatabaseDetails() throws Exception {
-        mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(content().json("{\"status\":\"UP\"}"));
-        mvc.perform(get("/api/health/ready")).andExpect(status().isOk()).andExpect(content().json("{\"status\":\"UP\"}"));
-        mvc.perform(get("/api/health/live")).andExpect(status().isOk()).andExpect(content().json("{\"status\":\"UP\"}"));
+        var safeRelease = org.hamcrest.Matchers.matchesPattern("unknown|[a-f0-9]{64}");
+        mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP")).andExpect(jsonPath("$.release").value(safeRelease));
+        mvc.perform(get("/api/health/ready")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP")).andExpect(jsonPath("$.release").value(safeRelease));
+        mvc.perform(get("/api/health/live")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP")).andExpect(jsonPath("$.release").value(safeRelease));
         mvc.perform(get("/api/health").header("Origin", "http://localhost:5173"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsString("X-Request-Id")));
@@ -3416,8 +3417,25 @@ class ProductionSafetyTests {
         mvc.perform(get("/api/auth/oauth/availability")).andExpect(status().isOk()).andExpect(jsonPath("$.google").value(false)).andExpect(jsonPath("$.facebook").value(false));
         mvc.perform(get("/api/auth/oauth/google/start")).andExpect(status().isServiceUnavailable());
         mvc.perform(post("/api/auth/oauth/google/native/start")).andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/api/auth/oauth/google/link/start").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password123\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/oauth/google/native/link/start").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password123\"}"))
+                .andExpect(status().isUnauthorized());
+        String token = register(UUID.randomUUID() + "@example.com");
+        mvc.perform(post("/api/auth/oauth/google/link/start").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password123\",\"next\":\"/profile\"}"))
+                .andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/api/auth/oauth/google/native/link/start").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password123\",\"next\":\"/profile\"}"))
+                .andExpect(status().isServiceUnavailable());
         mvc.perform(post("/api/auth/oauth/complete")).andExpect(status().isUnauthorized()).andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("sf_oauth_ticket=")));
         mvc.perform(post("/api/auth/oauth/native/complete").contentType(MediaType.APPLICATION_JSON).content("{\"handoff\":\"" + "a".repeat(43) + "\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/oauth/native/link/complete").contentType(MediaType.APPLICATION_JSON).content("{\"handoff\":\"" + "a".repeat(43) + "\"}"))
                 .andExpect(status().isUnauthorized());
     }
 

@@ -10,7 +10,7 @@ COPY frontend/ ./
 # The frontend build verifies every React route is covered by the Spring SPA
 # fallback. Copy only that contract into this isolated stage.
 COPY src/main/java/com/selfforge/discipline/common/SpaController.java /app/src/main/java/com/selfforge/discipline/common/SpaController.java
-RUN npm run lint && npm test && npm run test:account-sync && npm run test:habit-state-history && npm run test:spa-routes && npm run test:coach && npm run test:support && npm run test:native && npm run build
+RUN npm run audit:runtime && npm run lint && npm test && npm run test:account-sync && npm run test:habit-state-history && npm run test:spa-routes && npm run test:coach && npm run test:support && npm run test:native && npm run test:oauth && npm run test:passwords && npm run build
 
 # ============================================
 # Stage 2: Build Backend
@@ -28,6 +28,17 @@ COPY src/ ./src/
 
 # Copy frontend build output into Spring Boot static resources
 COPY --from=frontend-build /app/frontend/dist/ ./src/main/resources/static/
+
+# A source release can change backend code without changing the frontend
+# update hash. Generate a deterministic identifier from the packaged backend,
+# migrations and fresh frontend bundle, then expose only that opaque digest to
+# readiness diagnostics. src/main/resources/static is excluded from the Docker
+# context, so this layer can never accidentally include stale host assets.
+RUN set -eux; \
+    frontend_version="$(sed -n 's/.*"version":"\([a-f0-9]\{64\}\)".*/\1/p' src/main/resources/static/assets/app-version.json)"; \
+    test -n "$frontend_version"; \
+    release="$(find pom.xml src -type f ! -path 'src/main/resources/static/assets/release.json' -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1)"; \
+    printf '{"release":"%s","frontendVersion":"%s"}\n' "$release" "$frontend_version" > src/main/resources/static/assets/release.json
 
 # Build the JAR
 RUN mvn verify -B

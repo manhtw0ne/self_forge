@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LanguageContext } from './language-context';
-import { initialLanguage, normalizeLanguage, translate } from '../utils/language';
+import { initialLanguage, normalizeLanguage, pendingAccountLanguage, translate } from '../utils/language';
 import { useAuth } from './useAuth';
 import api from '../api/client';
 
@@ -12,6 +12,7 @@ export function LanguageProvider({ children }) {
   });
   const ownerRef = useRef(null);
   const pendingRef = useRef(null);
+  const explicitPublicLanguageRef = useRef(null);
   const syncingRef = useRef(false);
 
   const syncLanguage = useCallback(async () => {
@@ -43,8 +44,18 @@ export function LanguageProvider({ children }) {
     const saved = normalizeLanguage(user?.language);
     // A server setting wins across devices, except while this device has a
     // newer explicit selection awaiting sync.
-    if (saved && !pendingRef.current) updateLanguage(current => current === saved ? current : saved);
-  }, [user?.id, user?.language]);
+    if (saved) {
+      explicitPublicLanguageRef.current = null;
+      if (!pendingRef.current) updateLanguage(current => current === saved ? current : saved);
+      return;
+    }
+    const chosenBeforeAuth = pendingAccountLanguage(user?.language, explicitPublicLanguageRef.current);
+    if (owner && chosenBeforeAuth && !pendingRef.current) {
+      pendingRef.current = chosenBeforeAuth;
+      explicitPublicLanguageRef.current = null;
+      void syncLanguage();
+    }
+  }, [user?.id, user?.language, syncLanguage]);
 
   useEffect(() => {
     const retry = () => { void syncLanguage(); };
@@ -61,7 +72,11 @@ export function LanguageProvider({ children }) {
     if (!selected) return;
     updateLanguage(selected);
     const owner = ownerRef.current;
-    if (!Number.isSafeInteger(owner) || owner < 1 || normalizeLanguage(user?.language) === selected) return;
+    if (!Number.isSafeInteger(owner) || owner < 1) {
+      explicitPublicLanguageRef.current = selected;
+      return;
+    }
+    if (normalizeLanguage(user?.language) === selected) return;
     pendingRef.current = selected;
     void syncLanguage();
   }, [syncLanguage, user?.language]);

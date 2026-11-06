@@ -25,6 +25,7 @@ public class PasswordResetController {
     @PostMapping("/request")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String, String> request(@Valid @RequestBody EmailRequest request, jakarta.servlet.http.HttpServletRequest servletRequest) {
+        service.requireAvailable();
         limiter.acquire(request.email(), clientAddress.resolve(servletRequest));
         service.request(request.email());
         return Map.of("message", "Nếu email đã đăng ký và đủ điều kiện gửi, bạn sẽ nhận mã. Kiểm tra cả thư rác.");

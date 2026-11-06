@@ -76,7 +76,19 @@ public class OAuthLoginService {
 
     public URI begin(OAuthProvider provider, String returnPath, boolean termsAccepted) {
         ProviderConfig config = configured(provider);
-        return authorizationUrl(provider, config, returnPath, null, termsAccepted);
+        return authorizationUrl(provider, config, returnPath, null, null, null, termsAccepted);
+    }
+
+    public LinkAuthorization beginLink(OAuthProvider provider, String returnPath, Long userId, String passwordHash) {
+        ProviderConfig config = configured(provider);
+        return new LinkAuthorization(authorizationUrl(provider, config, returnPath, null, userId, tokens.hash(passwordHash), false));
+    }
+
+    public NativeAuthorization beginNativeLink(OAuthProvider provider, String returnPath, Long userId, String passwordHash) {
+        ProviderConfig config = configured(provider);
+        var handoff = handoffs.create(OAuthNativeHandoffPurpose.LINK);
+        return new NativeAuthorization(authorizationUrl(provider, config, returnPath, handoff.hash(), userId,
+                tokens.hash(passwordHash), false), handoff.raw());
     }
 
     public NativeAuthorization beginNative(OAuthProvider provider, String returnPath) {
@@ -86,13 +98,16 @@ public class OAuthLoginService {
     public NativeAuthorization beginNative(OAuthProvider provider, String returnPath, boolean termsAccepted) {
         ProviderConfig config = configured(provider);
         var handoff = handoffs.create();
-        return new NativeAuthorization(authorizationUrl(provider, config, returnPath, handoff.hash(), termsAccepted), handoff.raw());
+        return new NativeAuthorization(authorizationUrl(provider, config, returnPath, handoff.hash(), null, null, termsAccepted), handoff.raw());
     }
 
     private URI authorizationUrl(OAuthProvider provider, ProviderConfig config, String returnPath, String nativeHandoffHash,
-            boolean termsAccepted) {
+            Long linkUserId, String linkCredentialHash, boolean termsAccepted) {
         String verifier = provider == OAuthProvider.GOOGLE ? tokens.newToken() : null;
-        String state = states.create(provider, verifier, safeReturnPath(returnPath), nativeHandoffHash, termsAccepted);
+        String safePath = safeReturnPath(returnPath);
+        String state = linkUserId == null
+                ? states.create(provider, verifier, safePath, nativeHandoffHash, termsAccepted)
+                : states.createLink(provider, verifier, safePath, nativeHandoffHash, linkUserId, linkCredentialHash);
         var url = UriComponentsBuilder.fromUriString(config.authorizationEndpoint())
                 .queryParam("client_id", config.clientId())
                 .queryParam("redirect_uri", config.redirectUri())
@@ -113,23 +128,31 @@ public class OAuthLoginService {
         boolean nativeApp = state.nativeHandoffHash() != null;
         if (code == null || code.isBlank() || code.length() > 4096) {
             if (nativeApp) handoffs.discard(state.nativeHandoffHash());
-            return new CallbackResult(false, null, state.returnPath(), nativeApp, "failed");
+            return new CallbackResult(false, null, state.returnPath(), nativeApp, false, "failed");
         }
         try {
             ProviderConfig config = configured(provider);
             Profile profile = profile(provider, config, code, state.verifier());
+            if (state.linkUserId() != null) {
+                auth.linkOAuthIdentity(state.linkUserId(), provider, profile.subject(), state.linkCredentialHash());
+                if (nativeApp) {
+                    handoffs.complete(state.nativeHandoffHash(), state.linkUserId(), OAuthNativeHandoffPurpose.LINK);
+                    return new CallbackResult(true, null, state.returnPath(), true, true, null);
+                }
+                return new CallbackResult(true, null, state.returnPath(), false, true, null);
+            }
             AppUser user = auth.authenticateWithOAuth(provider, profile.subject(), profile.email(), profile.displayName(), state.termsAccepted());
             if (nativeApp) {
                 handoffs.complete(state.nativeHandoffHash(), user.getId());
-                return new CallbackResult(true, null, state.returnPath(), true, null);
+                return new CallbackResult(true, null, state.returnPath(), true, false, null);
             }
-            return new CallbackResult(true, tickets.issue(user.getId()), state.returnPath(), false, null);
+            return new CallbackResult(true, tickets.issue(user.getId()), state.returnPath(), false, false, null);
         } catch (AuthService.TermsRequired failure) {
             if (nativeApp) handoffs.discard(state.nativeHandoffHash());
-            return new CallbackResult(false, null, state.returnPath(), nativeApp, "terms_required");
+            return new CallbackResult(false, null, state.returnPath(), nativeApp, false, "terms_required");
         } catch (RuntimeException failure) {
             if (nativeApp) handoffs.discard(state.nativeHandoffHash());
-            return new CallbackResult(false, null, state.returnPath(), nativeApp, "failed");
+            return new CallbackResult(false, null, state.returnPath(), nativeApp, false, "failed");
         }
     }
 
@@ -151,6 +174,12 @@ public class OAuthLoginService {
         if (handoff.status() == OAuthNativeHandoffStore.Status.INVALID) throw invalidTicket();
         if (handoff.status() == OAuthNativeHandoffStore.Status.PENDING) return new NativeCompletion(false, null);
         return new NativeCompletion(true, auth.createOAuthSession(handoff.userId()));
+    }
+
+    public NativeLinkCompletion completeNativeLink(String rawHandoff, Long userId) {
+        var handoff = handoffs.consumeLink(rawHandoff, userId);
+        if (handoff.status() == OAuthNativeHandoffStore.Status.INVALID) throw invalidTicket();
+        return new NativeLinkCompletion(handoff.status() == OAuthNativeHandoffStore.Status.COMPLETED);
     }
 
     private Profile profile(OAuthProvider provider, ProviderConfig config, String code, String verifier) {
@@ -247,7 +276,10 @@ public class OAuthLoginService {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập mạng xã hội không hợp lệ hoặc đã hết hạn.");
     }
 
-    public record CallbackResult(boolean completed, String ticket, String returnPath, boolean nativeApp, String failure) {}
+    public record CallbackResult(boolean completed, String ticket, String returnPath, boolean nativeApp,
+                                 boolean linked, String failure) {}
     public record NativeAuthorization(URI authorizationUrl, String handoff) {}
+    public record LinkAuthorization(URI authorizationUrl) {}
     public record NativeCompletion(boolean completed, AuthResponse response) {}
+    public record NativeLinkCompletion(boolean completed) {}
 }

@@ -148,9 +148,16 @@ class StreakConsumerTests {
         entityManager.flush();
         entityManager.clear();
 
+        for (int offset = 2; offset <= 6; offset++) {
+            checks.save(new DailyCheckIn(habit, sunday.minusDays(offset - 1), CheckInStatus.COMPLETED, ""));
+        }
+        entityManager.flush();
+        entityManager.clear();
         var historicalRest = dashboard.today(habit.getUser(), sunday).habits().getFirst();
+        assertEquals(5, historicalRest.targetPerWeek());
         assertEquals("MON,TUE,WED,THU,FRI", historicalRest.scheduledDays());
         assertFalse(historicalRest.scheduledToday());
+        assertEquals(1.0, dashboard.today(habit.getUser(), sunday).weekCompletionRate());
 
         entityManager.createNativeQuery("insert into habit_state_history " +
                         "(habit_id,kind,target_per_week,scheduled_days,active,recorded_at,calendar_date,timezone) " +
@@ -162,6 +169,7 @@ class StreakConsumerTests {
         entityManager.clear();
 
         var historicalPause = dashboard.today(habit.getUser(), sunday).habits().getFirst();
+        assertEquals(5, historicalPause.targetPerWeek());
         assertFalse(historicalPause.scheduledToday());
     }
 
@@ -258,6 +266,46 @@ class StreakConsumerTests {
         checkInService.upsert(habit.getUser(), new CheckInRequests.UpsertCheckInRequest(
                 habit.getId(), TODAY, CheckInStatus.SKIPPED, "Timezone transition"));
         var saved = checks.findByHabit_User_IdAndHabitIdAndDate(habit.getUser().getId(), habit.getId(), TODAY).orElseThrow();
+        assertEquals(5, saved.getTargetPerWeekSnapshot());
+        assertEquals("MON,TUE,WED,THU,FRI", saved.getScheduledDaysSnapshot());
+    }
+
+    @Test void profileTimezoneBacktrackKeepsLaterScheduleWhenBothActionsShareTheSameInstant() {
+        var user = users.save(new AppUser(UUID.randomUUID() + "@example.test", "Timezone transition", "unused"));
+        // At the fixed instant, Kiritimati is already Tuesday while Adak is
+        // still Monday. Real profile edits can therefore make a later habit
+        // change carry an earlier calendar label, even when Clock timestamps
+        // are equal to the precision used by this test.
+        user.updateProfile(null, null, "Pacific/Kiritimati", null);
+        var created = habitService.create(user, new HabitRequests.CreateHabitRequest(
+                "Timezone-safe schedule", "", Difficulty.MEDIUM, 7, null, null, null));
+        var habit = habitService.getHabit(user, created.id());
+
+        user.updateProfile(null, null, "America/Adak", null);
+        habitService.update(user, habit.getId(), new HabitRequests.UpdateHabitRequest(
+                null, null, null, 5, null, null, null, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        var persistedUser = users.findById(user.getId()).orElseThrow();
+        var items = stateHistory.history(persistedUser, habit.getId(), null).items();
+        assertEquals(2, items.size());
+        assertEquals(TODAY, items.get(0).calendarDate());
+        assertEquals("America/Adak", items.get(0).timezone());
+        assertEquals(TODAY.plusDays(1), items.get(1).calendarDate());
+        assertEquals("Pacific/Kiritimati", items.get(1).timezone());
+        assertEquals(items.get(0).recordedAt(), items.get(1).recordedAt());
+
+        var resolvedTomorrow = stateHistory.scheduleForNewCheckIn(habit, TODAY.plusDays(1));
+        assertEquals(5, resolvedTomorrow.targetPerWeek());
+        assertEquals("MON,TUE,WED,THU,FRI", resolvedTomorrow.scheduledDays());
+        var historicalDashboard = dashboard.today(persistedUser, TODAY.plusDays(1)).habits().getFirst();
+        assertEquals(5, historicalDashboard.targetPerWeek());
+        assertEquals("MON,TUE,WED,THU,FRI", historicalDashboard.scheduledDays());
+
+        checkInService.upsert(persistedUser, new CheckInRequests.UpsertCheckInRequest(
+                habit.getId(), TODAY, CheckInStatus.SKIPPED, "Profile timezone transition"));
+        var saved = checks.findByHabit_User_IdAndHabitIdAndDate(persistedUser.getId(), habit.getId(), TODAY).orElseThrow();
         assertEquals(5, saved.getTargetPerWeekSnapshot());
         assertEquals("MON,TUE,WED,THU,FRI", saved.getScheduledDaysSnapshot());
     }

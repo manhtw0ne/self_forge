@@ -18,6 +18,10 @@ class OAuthLoginState {
     String returnPath;
     @Column(length = 64)
     String nativeHandoffHash;
+    @Column(name = "link_user_id")
+    Long linkUserId;
+    @Column(name = "link_credential_hash", length = 64)
+    String linkCredentialHash;
     @Column(nullable = false)
     boolean termsAccepted;
     @Column(nullable = false)
@@ -28,12 +32,14 @@ class OAuthLoginState {
     protected OAuthLoginState() {}
 
     OAuthLoginState(String stateHash, OAuthProvider provider, String codeVerifier, String returnPath, String nativeHandoffHash,
-            boolean termsAccepted, Instant expiresAt, Instant createdAt) {
+            Long linkUserId, String linkCredentialHash, boolean termsAccepted, Instant expiresAt, Instant createdAt) {
         this.stateHash = stateHash;
         this.provider = provider.name();
         this.codeVerifier = codeVerifier;
         this.returnPath = returnPath;
         this.nativeHandoffHash = nativeHandoffHash;
+        this.linkUserId = linkUserId;
+        this.linkCredentialHash = linkCredentialHash;
         this.termsAccepted = termsAccepted;
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;

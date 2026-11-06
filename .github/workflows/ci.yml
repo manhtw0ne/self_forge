@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
-      - run: npm run lint && npm test && npm run build
+      - run: npm run audit:runtime && npm run lint && npm test && npm run test:oauth && npm run test:passwords && npm run build
         working-directory: frontend
       - run: cp -r frontend/dist/. src/main/resources/static/
       - run: mvn -B -Ppostgres-tests verify

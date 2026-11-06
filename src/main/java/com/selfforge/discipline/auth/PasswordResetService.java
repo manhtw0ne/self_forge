@@ -30,7 +30,8 @@ public class PasswordResetService {
         this.securityEvents = securityEvents;
     }
     public boolean available() { return mail.available(); }
-    private void requireAvailable() {
+    /** Fails before a caller reserves an email-send budget when delivery is disabled. */
+    public void requireAvailable() {
         if (!available()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Chức năng email chưa sẵn sàng.");
     }
     public void request(String email) {

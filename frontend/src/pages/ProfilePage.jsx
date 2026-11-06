@@ -11,11 +11,17 @@ import SecurityActivity from '../components/SecurityActivity';
 import EmailChange from '../components/EmailChange';
 import EmailVerification from '../components/EmailVerification';
 import TimezoneSelector from '../components/TimezoneSelector';
+import OAuthLinkSettings from '../components/OAuthLinkSettings';
+import { Capacitor } from '@capacitor/core';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { hasPasswordConfirmationMismatch } from '../utils/passwordConfirmation';
 
 export default function ProfilePage() {
   const { t, language } = useLanguage();
   const { user, refreshUser, logout } = useAuth();
   const toast = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [form, setForm] = useState({
     displayName: user?.displayName || '',
@@ -28,6 +34,7 @@ export default function ProfilePage() {
   const [checkingProfile, setCheckingProfile] = useState(false);
   const profileDirty = JSON.stringify(form) !== JSON.stringify(savedForm);
   const [pwForm, setPwForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+  const passwordMismatch = hasPasswordConfirmationMismatch(pwForm.newPassword, pwForm.confirmPassword);
   const passwordBusy = useRef(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [stats, setStats] = useState(null);
@@ -37,6 +44,14 @@ export default function ProfilePage() {
   const [statsAttempt, setStatsAttempt] = useState(0);
   const exportBusy = useRef(false);
   const [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    if (query.get('oauth_linked') !== '1') return;
+    query.delete('oauth_linked');
+    query.delete('next');
+    toast.success(t(language === 'en' ? 'Social sign-in was linked to this account.' : 'Đã liên kết đăng nhập mạng xã hội với tài khoản này.'));
+    navigate({ pathname: location.pathname, search: query.toString() ? `?${query}` : '' }, { replace: true });
+  }, [language, location.pathname, location.search, navigate, t, toast]);
   const handleEmailVerified = useCallback(async () => {
     await refreshUser();
     toast.success(t('Email tài khoản đã được xác minh.'));
@@ -87,7 +102,7 @@ export default function ProfilePage() {
   const handleChangePassword = async (e) => {
     e.preventDefault();
     if (passwordBusy.current || deletingAccount) return;
-    if (pwForm.newPassword !== pwForm.confirmPassword) {
+    if (passwordMismatch) {
       toast.error(t('Mật khẩu xác nhận không khớp.'));
       return;
     }
@@ -219,10 +234,12 @@ export default function ProfilePage() {
                 <label className="form-label" htmlFor="confirm-password">{t("Nhập lại mật khẩu mới")}</label>
                 <PasswordInput id="confirm-password" type="password" className="form-input" autoComplete="new-password"
                   minLength={10} maxLength={128} disabled={savingPassword || deletingAccount}
-                  value={pwForm.confirmPassword} onChange={e => setPwForm({ ...pwForm, confirmPassword: e.target.value })} required />
+                  value={pwForm.confirmPassword} onChange={e => setPwForm({ ...pwForm, confirmPassword: e.target.value })} required
+                  aria-invalid={passwordMismatch || undefined} aria-describedby={passwordMismatch ? 'profile-confirm-password-error' : undefined} />
+                {passwordMismatch && <p id="profile-confirm-password-error" role="status" className="password-confirmation-error">{t('Mật khẩu xác nhận không khớp.')}</p>}
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{language === 'en' ? 'Use 10–128 characters and do not use your email as the password. A successful change signs out every device.' : 'Mật khẩu mới từ 10 đến 128 ký tự; không dùng email làm mật khẩu. Đổi thành công sẽ đăng xuất trên tất cả thiết bị.'}</p>
-              <button type="submit" className="btn btn-primary" disabled={savingPassword || deletingAccount}>{t(savingPassword ? 'Đang đổi…' : 'Đổi mật khẩu')}</button>
+              <button type="submit" className="btn btn-primary" disabled={savingPassword || deletingAccount || passwordMismatch}>{t(savingPassword ? 'Đang đổi…' : 'Đổi mật khẩu')}</button>
             </form>
           </div>
 
@@ -232,6 +249,8 @@ export default function ProfilePage() {
             toast.success(t('Đã đổi email. Vui lòng đăng nhập lại bằng email mới.'));
             await logout();
           }} />
+
+          <OAuthLinkSettings disabled={deletingAccount || savingPassword} nativePlatform={Capacitor.isNativePlatform()} />
 
           <div className="card">
             <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>{t("📤 Xuất dữ liệu")}</h3>

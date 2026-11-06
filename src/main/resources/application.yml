@@ -149,6 +149,17 @@ app:
     # Enables individually managed, single- or multi-use invitation codes.
     # Codes are created only through the operator API and are stored as hashes.
     managed-invites-enabled: ${BETA_MANAGED_INVITES_ENABLED:false}
+  payment:
+    # No transfer, checkout or webhook is reachable until a merchant account,
+    # sandbox and reconciliation rules have been reviewed.
+    orders-enabled: ${PAYMENT_ORDERS_ENABLED:false}
+    order-expiry-seconds: ${PAYMENT_ORDER_EXPIRY_SECONDS:1800}
+    # A dedicated key gates the read-only operator reconciliation queue.
+    operator-key: ${PAYMENT_OPERATOR_KEY:}
+    sepay:
+      webhook-enabled: ${SEPAY_WEBHOOK_ENABLED:false}
+      webhook-key: ${SEPAY_WEBHOOK_KEY:}
+      recipient-account: ${SEPAY_RECIPIENT_ACCOUNT:}
   password-reset:
     enabled: ${PASSWORD_RESET_ENABLED:false}
     from: ${PASSWORD_RESET_FROM:}

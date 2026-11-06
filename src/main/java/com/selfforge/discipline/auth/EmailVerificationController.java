@@ -37,6 +37,7 @@ public class EmailVerificationController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String, String> request(HttpServletRequest request) {
         AppUser user = current.requireUser(request);
+        verification.requireAccountVerificationAvailable();
         limiter.acquire(user.getEmail(), clientAddress.resolve(request));
         verification.requestForExistingUser(user.getId());
         return Map.of("message", "Nếu email tài khoản chưa xác minh và đủ điều kiện gửi, bạn sẽ nhận mã. Kiểm tra cả thư rác.");

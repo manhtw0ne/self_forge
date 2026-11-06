@@ -1,3 +1,4 @@
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -10,6 +11,7 @@ param(
 
 # Read the access key only from the environment. This avoids placing a
 # production secret in a command history, saved script, or process listing.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $key = [string]$env:BETA_METRICS_KEY
 if ([string]::IsNullOrWhiteSpace($key)) {
@@ -59,6 +61,27 @@ $requiredFields = @(
 $missingFields = @($requiredFields | Where-Object { -not $report.PSObject.Properties[$_] })
 if ($missingFields.Count -gt 0) {
     throw 'The beta metrics response did not match the expected aggregate-only contract.'
+}
+
+if ($report.from -ne $From -or $report.through -ne $Through -or
+    [string]::IsNullOrWhiteSpace([string]$report.timezone) -or
+    [string]::IsNullOrWhiteSpace([string]$report.generatedAt)) {
+    throw 'The beta metrics response did not match the requested reporting window.'
+}
+
+$countFields = @(
+    'registrations', 'usersWhoCreatedHabit', 'usersWhoCompletedCheckIn',
+    'activatedUsers', 'day1EligibleUsers', 'usersActivatedWithinDay1',
+    'day7EligibleUsers', 'usersWithCheckInAfterDay7', 'feedbackReports',
+    'weeklyAiSuggestions', 'weeklyAiRatings', 'weeklyAiWillTry'
+)
+foreach ($field in $countFields) {
+    $value = $report.PSObject.Properties[$field].Value
+    if ($value -isnot [byte] -and $value -isnot [int16] -and
+        $value -isnot [int32] -and $value -isnot [int64] -and $value -isnot [uint16] -and
+        $value -isnot [uint32] -and $value -isnot [uint64] -or [int64]$value -lt 0) {
+        throw 'The beta metrics response contained an invalid aggregate count.'
+    }
 }
 
 # Return only the server's aggregate contract so callers can pipe it to

@@ -2,6 +2,8 @@ package com.selfforge.discipline.auth;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -24,12 +26,17 @@ class OAuthNativeHandoff {
     @Column(nullable = false)
     Instant createdAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    OAuthNativeHandoffPurpose purpose;
+
     protected OAuthNativeHandoff() {}
 
-    OAuthNativeHandoff(String handoffHash, Instant expiresAt, Instant createdAt) {
+    OAuthNativeHandoff(String handoffHash, Instant expiresAt, Instant createdAt, OAuthNativeHandoffPurpose purpose) {
         this.handoffHash = handoffHash;
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;
+        this.purpose = purpose;
     }
 
     void complete(AppUser user) {

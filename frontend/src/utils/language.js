@@ -1712,6 +1712,14 @@ export function initialLanguage(storage, browserLanguage = 'vi') {
   return normalizeLanguage(browserLanguage) ?? 'vi';
 }
 
+// A language selected before authentication belongs to the person only after
+// they deliberately sign in or register. An existing account setting always
+// wins, so opening a public page cannot overwrite another device's choice.
+export function pendingAccountLanguage(accountLanguage, explicitPublicLanguage) {
+  if (normalizeLanguage(accountLanguage)) return null;
+  return normalizeLanguage(explicitPublicLanguage);
+}
+
 export function translate(language, source, parameters = {}) {
   const needsEnglishFallback = language === 'en' && !Object.hasOwn(english, source) && /[À-ỹ]/.test(source);
   // API details are translated by the same function as interface copy. New

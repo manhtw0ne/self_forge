@@ -86,10 +86,10 @@ export default function PremiumPage() {
         <p>{t("Mở khóa toàn bộ sức mạnh của SelfForge")}</p>
       </div>
 
-      <div className="card" role="note" style={{ marginBottom: '1.5rem' }}>
+      <div className="card premium-availability-card" role="note">
         <strong>{t('Premium chưa mở bán')}</strong>
         <p>{t('Giá bên dưới là dự kiến bằng VND. Thanh toán và tự động kích hoạt chưa khả dụng; bạn chưa cần chuyển khoản.')}</p>
-        {error && <p role="alert">{t('Chưa tải được trạng thái Premium mới nhất. Các tính năng nâng cao sẽ vẫn khóa cho đến khi kết nối lại.')}</p>}
+        {error && <p className="premium-availability-error" role="alert">{t('Chưa tải được trạng thái Premium mới nhất. Các tính năng nâng cao sẽ vẫn khóa cho đến khi kết nối lại.')}</p>}
         <button type="button" className="btn btn-secondary" onClick={() => void refreshPremium()} disabled={loading}>
           {t(loading ? 'Đang tải lại trạng thái...' : 'Tải lại trạng thái Premium')}
         </button>
@@ -105,9 +105,7 @@ export default function PremiumPage() {
               <span className="price-period">{t(plan.period)}</span>
             </div>
             <p className="premium-plan-desc">{t(plan.desc)}</p>
-            <button className="btn btn-premium" disabled>
-              {t("Sắp ra mắt")}
-            </button>
+            <p className="premium-plan-unavailable" role="status">{t('Chưa mở bán')}</p>
           </div>
         ))}
       </div>

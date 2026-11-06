@@ -30,11 +30,18 @@ public class RegistrationVerification {
     public boolean required() { return required; }
     public boolean available() { return required && mail.available(); }
     public boolean accountVerificationAvailable() { return mail.available(); }
-    private void ensureAvailable() {
+    /** Fails before a caller reserves an email-send budget when registration OTP delivery is disabled. */
+    public void requireRegistrationAvailable() {
         if (!available()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
     }
+    /** Fails before a caller reserves an email-send budget when account verification delivery is disabled. */
+    public void requireAccountVerificationAvailable() {
+        if (!accountVerificationAvailable()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
+        }
+    }
     public void request(String input) {
-        ensureAvailable();
+        requireRegistrationAvailable();
         String email = input.trim().toLowerCase(Locale.ROOT);
         if (users.existsByEmail(email)) return;
         var code = codes.lockByEmail(email).orElseGet(() -> new RegistrationCode(email));
@@ -52,9 +59,7 @@ public class RegistrationVerification {
 
     /** Lets a signed-in legacy account prove control of its existing email without re-registering. */
     public void requestForExistingUser(Long userId) {
-        if (!accountVerificationAvailable()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
-        }
+        requireAccountVerificationAvailable();
         AppUser user = users.lockById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
         if (user.getEmailVerifiedAt() != null) return;
         String email = user.getEmail();
@@ -74,7 +79,7 @@ public class RegistrationVerification {
     @Transactional(noRollbackFor = PasswordResetService.InvalidCode.class)
     public void verify(String email, String otp) {
         if (!required) return;
-        ensureAvailable();
+        requireRegistrationAvailable();
         var code = codes.lockByEmail(email).orElseThrow(PasswordResetService.InvalidCode::new);
         if (!code.usable(clock.instant())) throw new PasswordResetService.InvalidCode();
         if (otp == null || !hasher.matches(otp, code.getCodeHash())) {
@@ -86,9 +91,7 @@ public class RegistrationVerification {
 
     @Transactional(noRollbackFor = PasswordResetService.InvalidCode.class)
     public void verifyExistingUser(Long userId, String otp) {
-        if (!accountVerificationAvailable()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Xác nhận email chưa sẵn sàng.");
-        }
+        requireAccountVerificationAvailable();
         AppUser user = users.lockById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
         if (user.getEmailVerifiedAt() != null) return;
         var code = codes.lockByEmail(user.getEmail()).orElseThrow(PasswordResetService.InvalidCode::new);

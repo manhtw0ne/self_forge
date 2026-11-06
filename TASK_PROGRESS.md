@@ -1,23 +1,21 @@
 # TASK_PROGRESS.md — SelfForge
 
-Cập nhật: 2026-11-05 (phiên 21:55 ICT)
+Cập nhật: 2026-11-06 (Asia/Bangkok)
 
 ## Phạm vi hiện hành — quyết định 2026-11-02
 
 Ưu tiên hoàn thiện phần cốt lõi. Chỉ thử AI tổng kết tuần (AI-2A); tạm dừng mở rộng GOAL, RESTART, JOURNAL, DAILY_FOCUS và CHAT đến khi chủ dự án có quyết định mới. Giữ code/dữ liệu đã có và các chức năng tương ứng không dùng AI. Kế hoạch điều hành: [docs/DEVELOPMENT_PRIORITIES.md](docs/DEVELOPMENT_PRIORITIES.md).
 
-Bước tiếp theo: kiểm tra cleanup disposable smoke khi Docker Engine ổn định lại; không lặp lại test nếu engine vẫn tắt. Snapshot lịch cho check-in bù, timezone backtrack và ngày trước observation đã có regression; full PostgreSQL/Flyway sau đó **171 PASS** trên bản hiện hành. History UI qua frontend tests/lint/build, nhưng còn nghiệm thu browser/mobile chuẩn. Chỉ thử weekly khi các điều kiện lõi, consent, ngân sách và đo lường đã sẵn sàng; không tự mở rộng AI theo roadmap cũ.
+Bước tiếp theo: browser/mobile E2E chuẩn và các provider thật vẫn là ưu tiên nghiệm thu còn mở. Payment foundation V51 đã có regression cục bộ nhưng vẫn tắt mặc định, không được đưa vào luồng bán hàng khi chưa có sandbox/merchant credentials. OAuth V52–V53 đã chặn takeover bằng email và chỉ cho liên kết provider sau re-authentication, kể cả native handoff tách khỏi login; Google/Facebook vẫn tắt khi chưa có app credentials. Snapshot lịch cho check-in bù, timezone backtrack và ngày trước observation đã có regression; history UI qua frontend tests/lint/build, nhưng còn nghiệm thu browser/mobile chuẩn. Chỉ thử weekly khi các điều kiện lõi, consent, ngân sách và đo lường đã sẵn sàng; không tự mở rộng AI theo roadmap cũ.
 
 ## Trạng thái tổng quan
 
 - **Thay đổi kế hoạch 2026-11-02**: cập nhật ưu tiên lõi và phạm vi AI; chỉ sửa tài liệu và chỉ dẫn cho các lượt chạy định kỳ. Không chạy lại tests ứng dụng vì không thay code/config. Kết quả test phía dưới giữ nguyên ngày và phạm vi kiểm chứng của phiên trước.
 
-- **Frontend tests**: phiên 2026-11-04: **505 pass**, 0 fail/cancel/skip; lint và production build PASS với Vite 8.3.5. Chưa kiểm thử tương tác UI trên trình duyệt/mobile chuẩn trong runtime này.
-- **Backend tests**: phiên 2026-11-05 (21:27 ICT): full Surefire **508 PASS**, 0 failure, 0 error, 0 skip. Fix: `RestClientConfig.java` cung cấp `RestClient.Builder` bean qua static factory + exclude `RestClientAutoConfiguration` để tránh lỗi loopback khi khởi động context trong sandbox/CI.
-- **Commit**: toàn bộ working tree đã commit (bao gồm migrations V1–V50, test classes, frontend build, security headers, PWA assets, AI coach code).
-- **Backend tests**: phiên 2026-11-04: full Maven verify **676 Surefire PASS**, 0 failure/error/skip; profile PostgreSQL/Flyway có **171 Failsafe PASS**. Ngày 2026-11-05, `AuthSessionCleanupTests` (1) và `ProductionSafetyTests` (167) tiếp tục PASS. Docker Engine đã dừng sau managed-beta smoke cleanup nên hiện không thể chạy/kiểm tra Docker mới.
-- **Flyway migrations**: V1–V50 đã được bao phủ bằng H2/PostgreSQL disposable, gồm schema validation, upgrade và restart giữ dữ liệu. V43 bổ sung lịch sử trạng thái habit, không backfill lịch sử cũ; V49–V50 quản lý mã mời beta và triage phản hồi.
-- **Git**: Commit `d76f611` — toàn bộ working tree (migrations V1–V50, test classes, frontend build, RestClientConfig fix). Working tree sạch.
+- **Frontend tests**: phiên 2026-11-06: **506 pass**, 0 fail/cancel/skip; lint, runtime audit và production build PASS với Vite 8.3.5 (được chạy lại trong Docker release build). Chưa kiểm thử tương tác UI trên trình duyệt/mobile chuẩn trong runtime này.
+- **Backend tests**: Docker release build ngày 2026-11-06 ghi **522 PASS**, 0 failure/error/skip. Đây là full `mvn verify` của worktree hiện tại, bao gồm payment và các regression có trước đó.
+- **PostgreSQL/Flyway**: V1–V53 migrate/restart trên PostgreSQL 16 disposable đã PASS; release smoke mới cũng migrate image hiện tại trên PostgreSQL disposable và restart thành công. V51–V53 chưa được migrate vào staging/production.
+- **Git**: working tree có các thay đổi payment V51 và thay đổi cục bộ khác từ trước; không reset, stage, commit hoặc ghi đè chúng trong phiên này.
 
 ## Rà soát phiên 2026-11-05 (21:55 ICT) — không cần external credentials
 
@@ -768,3 +766,546 @@ Bước tiếp theo: kiểm tra cleanup disposable smoke khi Docker Engine ổn 
 
 - Android debug/release build, emulator/device test và Play Store signing không thể được xác minh cho đến khi máy có Android SDK hợp lệ được cấu hình bởi chủ dự án. Không tự cài SDK, tạo `local.properties`, đổi environment variable hoặc tạo signing key vì đó là thay đổi môi trường/credential ngoài scope repository.
 - Browser/device E2E chuẩn, staging/public deploy, database secrets, SMTP/OAuth/payment credentials vẫn là các phụ thuộc ngoài. Các test local/Docker đã PASS không được xem là thay thế cho chúng.
+
+## Phiên 2026-11-05 — nền tảng payment Premium tắt mặc định
+
+- Thêm domain payment độc lập: catalog giá server-side bằng VND cho `MONTHLY`, `YEARLY`, `LIFETIME`; order có reference ngẫu nhiên; event có provider transaction ID duy nhất để callback lặp không cấp Premium hai lần. Giá, tiền tệ và thời hạn entitlement không nhận từ browser.
+- Thêm Flyway `V51__payment_orders.sql`: `payment_order` và `payment_event` tách biệt. Event không lưu nội dung chuyển khoản hoặc thông tin người gửi; callback không khớp chỉ được giữ ở `REVIEW`, không đổi Premium.
+- Thêm adapter webhook SePay có API key constant-time comparison và reference được giới hạn định dạng. API order yêu cầu session trước khi phản hồi trạng thái tính năng. Cả order và webhook đều **tắt mặc định**; webhook chỉ khởi động khi có đồng thời order flag, merchant key và account nhận hợp lệ.
+- Điều chỉnh xóa tài khoản: xóa payment order cá nhân trong cùng transaction, còn payment event được database tách `payment_order_id` để giữ bản ghi đối soát không còn liên kết với user. Có regression HTTP cho luồng đã cấp Premium rồi xóa tài khoản.
+- Cập nhật assertion schema/Flyway V51. PostgreSQL restart test lần đầu phát hiện hai assertion version cũ 50; chỉ sửa expectation phù hợp V51 rồi chạy lại test đó thành công.
+
+### Files đã thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/payment/PaymentPlan.java`, `PaymentOrderStatus.java`, `PaymentEventDisposition.java`, `PaymentOrder.java`, `PaymentEvent.java`, `PaymentOrderRepository.java`, `PaymentEventRepository.java`, `PaymentOrderService.java`, `PaymentSettings.java`, `PaymentOrderController.java`, `SePayWebhookController.java`
+- `src/main/resources/db/migration/postgresql/V51__payment_orders.sql`, `src/main/resources/application.yml`
+- `src/main/java/com/selfforge/discipline/auth/AccountDeletionService.java`
+- `src/test/java/com/selfforge/discipline/payment/PaymentOrderServiceTests.java`, `PaymentFeatureDisabledTests.java`, `MigrationSchemaTests.java`, `ProductionSafetyTests.java`, `PostgresMigrationIT.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=PaymentOrderServiceTests,PaymentFeatureDisabledTests` → **6 PASS**, 0 failure/error/skip. Bao phủ server catalog, wrong amount review, lifetime, webhook key, immediate entitlement, replay callback, account deletion và fail-closed mặc định.
+- `mvn -B -Ppostgres-tests -Dit.test=PostgresMigrationIT#productionStartupAndRestartPreserveData test-compile failsafe:integration-test failsafe:verify` → PostgreSQL 16/Flyway V51 **1 PASS**, 0 failure/error/skip; production-profile restart giữ dữ liệu và migration không chạy lại.
+- `mvn -B test -Dtest=MigrationSchemaTests,ProductionSafetyTests` → **335 PASS**, 0 failure/error/skip.
+
+### Rào cản và bước tiếp theo
+
+- Không bật `PAYMENT_ORDERS_ENABLED` hoặc `SEPAY_WEBHOOK_ENABLED`: chưa có merchant account, sandbox, webhook key, account nhận, QR/checkout UI, reconciliation vận hành, refund policy hoặc staging callback xác thực. Không có giao dịch tiền thật hoặc Premium bán thật được thực hiện trong increment này.
+- Bước hợp lý tiếp theo khi chủ dự án có sandbox SePay là cấu hình secret ngoài Git, test callback sandbox trên staging, đối soát một giao dịch mô phỏng và sau đó mới thiết kế UI checkout/QR. Cần quyết định chính sách refund/chargeback và retention ledger trước public payment.
+
+## Phiên 2026-11-05 — chống order Premium trùng khi retry
+
+- Bổ sung policy trên service: cùng tài khoản gửi lại yêu cầu của **cùng gói** khi order PENDING còn hạn sẽ nhận lại chính reference cũ; không tạo thêm lệnh chuyển khoản. Khi chủ động chọn gói khác, reference PENDING cũ chuyển `CANCELLED` rồi mới tạo order mới.
+- Callback đến muộn cho reference đã hủy chỉ sinh event `REVIEW`, không thể cấp Premium. User được lock trước khi tìm/tạo order, nên các request tạo order đồng thời của cùng tài khoản đi qua cùng quyết định này.
+- Lượt full Surefire trước thay đổi này đã tạo reports **514 PASS**, 0 failure/error/skip. Vì policy retry được thêm sau lượt đó, không gán kết quả full đó cho code mới; code mới được kiểm chứng bằng nhóm payment trực tiếp bên dưới.
+
+### Files đã thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/payment/PaymentOrder.java`, `PaymentOrderRepository.java`, `PaymentOrderService.java`
+- `src/test/java/com/selfforge/discipline/payment/PaymentOrderServiceTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- Lần đầu regression mới có 1 assertion fail vì entity test bị detach sau transaction và vẫn giữ state cũ; không phải trạng thái database. Sửa assertion đọc lại repository, không sửa hành vi production.
+- `mvn -B test -Dtest=PaymentOrderServiceTests,PaymentFeatureDisabledTests` → **7 PASS**, 0 failure/error/skip. Bao phủ retry cùng gói, đổi gói, payment đến muộn cho order đã hủy, cùng toàn bộ rule webhook/fail-closed trước đó.
+
+### Rào cản và bước tiếp theo
+
+- Vẫn chưa có provider sandbox/secret và chưa mở UI checkout. Không bật flag, không suy diễn rằng transfer thật hoặc refund đã được xác minh.
+
+## Phiên 2026-11-06 — hàng đợi đối soát payment chỉ-đọc
+
+- Thêm `GET /api/operator/payments/review`: chỉ hiển thị event `REVIEW` cho người có `PAYMENT_OPERATOR_KEY` riêng; thiếu hoặc sai key trả `404`. Endpoint không dùng chung khóa beta metrics và không có API thủ công cấp/hủy Premium.
+- Hàng đợi chỉ trả metadata cần đối soát: provider transaction ID, reference, số tiền nhận được, số tiền/gói kỳ vọng, trạng thái order và lý do review. Không trả user ID, email, account người gửi hay nội dung chuyển khoản.
+- Thêm các mã review không nhạy cảm vào ledger: reference không khớp, transfer không hợp lệ, order không còn payable, sai tiền và tài khoản Lifetime đã có quyền. Điều này cho phép xử lý support có căn cứ mà không giữ raw bank content.
+
+### Files đã thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/payment/PaymentOperatorAccess.java`, `PaymentOperatorController.java`, `PaymentReviewReason.java`
+- `src/main/java/com/selfforge/discipline/payment/PaymentEvent.java`, `PaymentEventRepository.java`, `PaymentOrderService.java`
+- `src/main/resources/application.yml`, `src/main/resources/db/migration/postgresql/V51__payment_orders.sql`
+- `src/test/java/com/selfforge/discipline/payment/PaymentFeatureDisabledTests.java`, `PaymentOperatorTests.java`, `PaymentOrderServiceTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=PaymentOrderServiceTests,PaymentFeatureDisabledTests,PaymentOperatorTests` → **8 PASS**, 0 failure/error/skip. Bao phủ queue chỉ-đọc, khóa operator riêng, endpoint ẩn khi chưa có key, không lộ định danh tài khoản, reason/expected amount, replay, đổi gói và webhook fail-closed.
+- `mvn -B -Ppostgres-tests -Dit.test=PostgresMigrationIT#productionStartupAndRestartPreserveData test-compile failsafe:integration-test failsafe:verify` → PostgreSQL 16/Flyway V51 **1 PASS**, 0 failure/error/skip.
+
+### Rào cản và bước tiếp theo
+
+- Chưa có sandbox merchant, callback thật, `PAYMENT_OPERATOR_KEY` vận hành, QR/checkout UI, job đối soát provider khi mất webhook, refund policy hay quy trình hỗ trợ. Không cấu hình/ghi secret, không bật flag và không coi hàng đợi local là khả năng thu tiền thật.
+
+## Phiên 2026-11-06 — liên kết OAuth tường minh, không takeover bằng email
+
+- Sửa policy OAuth: một provider subject đã liên kết vẫn đăng nhập đúng tài khoản cũ, nhưng provider subject **mới** có email trùng tài khoản SelfForge hiện hữu không còn tự nhập vào tài khoản đó. Luồng trả conflict và yêu cầu người dùng đăng nhập vào tài khoản hiện hữu để liên kết tường minh.
+- Thêm `POST /api/auth/oauth/{provider}/link/start`: yêu cầu session hiện tại và mật khẩu hiện tại trước khi redirect sang provider. State chỉ sống một lần trong 10 phút, gắn với user ID và fingerprint của password hash; đổi mật khẩu trong lúc chờ callback khiến link hết hiệu lực.
+- Callback link xác thực provider subject trước rồi mới tạo `OAuthIdentity`; không cấp session OAuth mới, không dùng email provider để ghép tài khoản, và không tự đổi email local. Một subject hoặc một provider đã thuộc tài khoản khác đều bị từ chối.
+- Thêm Flyway `V52__oauth_explicit_linking.sql` cho state link user/fingerprint; foreign key tự xoá state đang chờ khi account bị xoá. Cập nhật các assertion version/migration count thành V52.
+
+### Files thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/auth/AuthService.java`, `OAuthLoginController.java`, `OAuthLoginService.java`, `OAuthLoginState.java`, `OAuthLoginStateStore.java`
+- `src/main/resources/db/migration/postgresql/V52__oauth_explicit_linking.sql`
+- `src/test/java/com/selfforge/discipline/auth/OAuthLoginStoreTests.java`, `MigrationSchemaTests.java`, `ProductionSafetyTests.java`, `PostgresMigrationIT.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=OAuthLoginStoreTests` → **6 PASS**, 0 failure/error/skip. Bao phủ state single-use, giữ link state, takeover qua email bị chặn, ownership của provider subject và password đổi sau khi bắt đầu link.
+- `mvn -B test -Dtest=MigrationSchemaTests` → **168 PASS**, 0 failure/error/skip; H2/Flyway áp dụng 52 migration và schema JPA validate.
+- `mvn -B test -Dtest=ProductionSafetyTests` → **167 PASS**, 0 failure/error/skip; endpoint link cần auth và trả fail-closed khi provider chưa cấu hình.
+- `mvn -B -Ppostgres-tests -Dit.test=PostgresMigrationIT#productionStartupAndRestartPreserveData test-compile failsafe:integration-test failsafe:verify` → PostgreSQL 16/Flyway V52 **1 PASS**, 0 failure/error/skip.
+- `git diff --check` → không có whitespace error (chỉ có cảnh báo CRLF bình thường của Git cho worktree Windows).
+
+### Rào cản và bước tiếp theo
+
+- Google/Facebook vẫn chưa được bật: thiếu OAuth client ID/secret, redirect URL đã đăng ký và staging callback test. Không có credential thật, provider redirect hoặc browser/device E2E nào đã được thực hiện.
+- Profile UI cho link đã được thêm và chỉ hiển thị khi server báo provider đang khả dụng; native link cũng có handoff riêng từ V53. Khi có provider sandbox, bước tiếp theo là cấu hình secret ngoài Git và chạy callback/link E2E trên staging/device.
+
+## Phiên 2026-11-06 — UI liên kết OAuth theo feature availability
+
+- Thêm card “Liên kết đăng nhập mạng xã hội” trong Profile, nhưng card hoàn toàn ẩn khi API báo Google/Facebook chưa cấu hình hoặc không lấy được availability. Do đó bản beta mặc định không quảng bá provider chưa sẵn sàng.
+- Khi provider được bật, người dùng phải nhập mật khẩu hiện tại rồi mới gọi endpoint link đã có re-authentication ở backend. Mật khẩu chỉ giữ trong React state, được xóa ngay cả khi bắt đầu thất bại, và không ghi localStorage/log/query string.
+- Frontend chỉ cho điều hướng tới authorization URL HTTPS có độ dài hữu hạn, không có username/password. Sau callback thành công, toast xác nhận hiển thị một lần và URL được làm sạch. Email SelfForge không bị thay đổi bởi thông tin provider.
+- Với native Capacitor, UI chỉ thông báo luồng link chưa sẵn sàng thay vì mở browser rồi mắc kẹt, vì native callback/handoff cho link chưa được triển khai. Login OAuth native hiện hữu không bị thay đổi.
+
+### Files thay đổi trong increment
+
+- `frontend/src/components/OAuthLinkSettings.jsx`
+- `frontend/src/utils/oauthLink.js`, `frontend/src/utils/oauthLink.test.js`
+- `frontend/src/pages/ProfilePage.jsx`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `node --test src/utils/oauthLink.test.js` → **1 PASS**; URL relative/HTTP/credential-bearing/malformed/quá dài bị từ chối.
+- `npm.cmd run lint` → PASS; `npm.cmd run build` → PASS (Vite 8.3.5).
+- `npm.cmd test` → **505 PASS**, 0 failure/cancel/skip. Test mới được chạy focused vì script suite hiện hành liệt kê tường minh các file test.
+
+### Rào cản và bước tiếp theo
+
+- Không có OAuth provider thật nên không thể nhìn thấy card trong runtime hiện tại hay chạy callback E2E; đây không phải bằng chứng Google/Facebook login/link hoạt động ngoài thực tế.
+- Cần Google/Facebook client ID/secret, redirect URL staging và một browser/device chuẩn để thực hiện một link thành công, xác minh provider subject đã có/đã thuộc tài khoản khác, và quyết định native handoff riêng trước khi mở tính năng này trên mobile.
+
+## Phiên 2026-11-06 — native OAuth link, không thể đổi thành login
+
+- Thêm Flyway `V53__oauth_native_link_handoff.sql`: mỗi native handoff được gắn purpose `LOGIN` hoặc `LINK`. Dữ liệu cũ default `LOGIN`; database chỉ chấp nhận hai giá trị này.
+- Native link bắt đầu chỉ sau session hiện tại + mật khẩu hiện tại. Callback provider liên kết subject với đúng account đã được pin trong OAuth state, rồi hoàn tất handoff purpose `LINK` cho account đó. App chỉ poll `POST /api/auth/oauth/native/link/complete` với session hiện hữu; response chỉ nói `LINKED`, không trả token và không thể tạo session mới.
+- Endpoint login completion từ chối handoff `LINK`; owner khác cũng không consume được handoff. Mismatch purpose không xóa handoff hợp lệ của owner, nên request sai không gây denial-of-service cho flow đang chờ.
+- Cập nhật Profile Capacitor: mở provider trong secure browser, poll completion, đóng browser khi success/failure và xóa mật khẩu/handoff khỏi React state. Thông báo callback native phân biệt “Đăng nhập” và “Liên kết”.
+
+### Files thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/auth/OAuthNativeHandoffPurpose.java`, `OAuthNativeHandoff.java`, `OAuthNativeHandoffStore.java`, `OAuthLoginStateStore.java`, `OAuthLoginService.java`, `OAuthLoginController.java`
+- `src/main/resources/db/migration/postgresql/V53__oauth_native_link_handoff.sql`
+- `src/test/java/com/selfforge/discipline/auth/OAuthLoginStoreTests.java`, `MigrationSchemaTests.java`, `ProductionSafetyTests.java`, `PostgresMigrationIT.java`
+- `frontend/src/components/OAuthLinkSettings.jsx`, `frontend/src/pages/ProfilePage.jsx`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- Sau correction mismatch purpose, `mvn -B test -Dtest=OAuthLoginStoreTests,ProductionSafetyTests,MigrationSchemaTests` → **342 PASS** (7 OAuth + 167 safety + 168 migration), 0 failure/error/skip; test mới che chính nhánh đã đổi.
+- `mvn -B -Ppostgres-tests -Dit.test=PostgresMigrationIT#productionStartupAndRestartPreserveData test-compile failsafe:integration-test failsafe:verify` → PostgreSQL 16/Flyway V53 **1 PASS**, 0 failure/error/skip.
+- `node --test src/utils/oauthLink.test.js src/utils/nativeOAuth.test.js` → **2 PASS**; `npm.cmd run lint` và `npm.cmd run build` → PASS; `npm.cmd test` → **505 PASS**, 0 failure/cancel/skip.
+
+### Rào cản và bước tiếp theo
+
+- Chưa có Google/Facebook app credentials hay device/staging redirect để thử provider thực, Capacitor Browser thật hoặc polling end-to-end. Không tuyên bố native OAuth hoạt động trên điện thoại chỉ từ code/fixture cục bộ.
+- Trước public enable, cần test cả: account local trùng email provider (phải không takeover), subject đã gắn account khác (phải từ chối), đổi mật khẩu khi browser đang mở (phải hết hạn), app đóng/mở khi callback thành công và callback bị hủy/timeout. Credentials, domain redirect và một Android/iOS device vẫn là phụ thuộc ngoài.
+- Production smoke cho V51–V53 đã qua trong lượt kế tiếp; xem mục bên dưới. Việc build đầu tiên từng timeout TLS ở Docker Hub không phải lỗi source, và retry chỉ được thực hiện sau yêu cầu tiếp tục mới của chủ dự án.
+
+## Phiên 2026-11-06 — production smoke V53 trên image mới
+
+- Docker Hub hoạt động lại. Build `selfforge:local-preflight-v53` từ source hiện tại thành công (image `sha256:15fa5a6a69ef…`); Dockerfile tự chạy frontend lint/test/build và backend verification trước khi tạo runtime image.
+- Chạy `scripts/smoke-production.ps1` với image mới, PostgreSQL 16/network/containers hoàn toàn disposable, giới hạn **512 MiB / 1 CPU**. Không kết nối Render, database deploy, provider OAuth/email/payment hoặc dữ liệu người dùng thật.
+- Smoke PASS: startup/Flyway V1–V53, SPA deep links/frontend assets, đăng ký và writes, feedback private + beta metrics khóa quyền, conflict profile/journal, habit schedule history, companion/challenge/focus, check-in retry/XP, restart/goal/reminder persistence, private export, account isolation, đổi mật khẩu thu hồi session, login throttling, logout và xóa account vĩnh viễn.
+
+### Kiểm chứng
+
+- `docker build --tag selfforge:local-preflight-v53 .` → PASS.
+- `scripts/smoke-production.ps1 -Image selfforge:local-preflight-v53 -MemoryMb 512 -CpuLimit 1 -StartupTimeoutSeconds 180` → PASS. Readiness: **41.98 s** lúc khởi động và **39.59 s** sau restart.
+- Kiểm tra read-only sau `finally` cleanup: không còn container tên `sf-smoke-*`.
+
+### Giới hạn còn lại
+
+- Đây là production-like local evidence, không phải staging/public deploy. OAuth provider thật, SMTP/payment, browser/device E2E, backup/restore của database managed và Render health vẫn chưa được xác minh; không coi smoke PASS là bằng chứng các tích hợp đó đã live.
+
+## Phiên 2026-11-06 — cổng regression OAuth trong build release
+
+- Thêm script `test:oauth` để chạy cùng lúc kiểm thử URL OAuth native và kiểm thử URL liên kết OAuth web. Nhờ đó regression của card liên kết Profile không còn chỉ được chạy thủ công/focused.
+- Docker build release và workflow GitHub CI đều gọi cổng này trước frontend build. Cổng kiểm thử chỉ kiểm tra logic local; không truyền credential provider, không bật OAuth, và không thay đổi hành vi runtime.
+
+### Files thay đổi trong increment
+
+- `frontend/package.json`
+- `Dockerfile`
+- `.github/workflows/ci.yml`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `npm.cmd run test:oauth` → **2 PASS**, 0 failure/cancel/skip.
+- `npm.cmd run lint` → PASS.
+- `docker build --tag selfforge:local-preflight-v53-gated .` → PASS; tạo image `sha256:dbe88a90687b…`. Build này đã chạy cổng `test:oauth` trong Docker trước khi tạo runtime image.
+- GitHub Actions chưa được trigger từ workspace này; thay đổi workflow là cấu hình đã kiểm tra bằng local build, không phải kết quả CI remote.
+
+### Rào cản và bước tiếp theo
+
+- Bằng chứng deploy/staging vẫn còn thiếu: cần push/review rõ ràng rồi trigger CI remote, deploy staging và thực hiện smoke từ URL công khai. Không thực hiện push/deploy khi chưa có yêu cầu hiện tại.
+- Provider OAuth thực, SMTP, payment và device/browser E2E vẫn cần credentials/cấu hình ngoài Git trước khi có thể xác minh tích hợp end-to-end.
+
+## Phiên 2026-11-06 — chặn sớm mật khẩu xác nhận không khớp
+
+- Nghiệm thu form đăng ký trên runtime disposable đã phát hiện nút đăng ký vẫn bật khi hai mật khẩu khác nhau. Backend vốn từ chối trường hợp này khi submit, nhưng trải nghiệm và tín hiệu accessibility ở frontend chưa đủ rõ.
+- Thêm predicate dùng chung cho xác nhận mật khẩu, áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi mật khẩu**. Khi người dùng đã nhập một confirmation khác mật khẩu mới, input được đánh dấu `aria-invalid`, có thông báo trạng thái gắn bằng `aria-describedby`, và nút gửi bị disable. Khi hai mật khẩu khớp lại, cảnh báo bị bỏ và form có thể tiếp tục.
+- Kiểm tra submit cũ vẫn giữ nguyên như defense-in-depth; backend không bị nới lỏng. Test mới có cổng riêng và chạy trong Docker release/GitHub CI cùng các cổng OAuth đã thêm.
+
+### Files thay đổi trong increment
+
+- `frontend/src/utils/passwordConfirmation.js`, `frontend/src/utils/passwordConfirmation.test.js`
+- `frontend/src/pages/LoginPage.jsx`, `frontend/src/components/PasswordResetForm.jsx`, `frontend/src/pages/ProfilePage.jsx`, `frontend/src/index.css`
+- `frontend/package.json`, `Dockerfile`, `.github/workflows/ci.yml`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `npm.cmd run test:passwords` → **1 PASS**, 0 failure/cancel/skip.
+- `npm.cmd test` → **505 PASS**, 0 failure/cancel/skip; `npm.cmd run lint` và `npm.cmd run build` → PASS.
+- `docker build --tag selfforge:local-preflight-v53-password-gated .` → PASS, image `sha256:2c86244330be…`; Docker build đã chạy lint, full frontend suite, cổng OAuth/mật khẩu, build frontend và backend verification.
+- Browser acceptance trên local PostgreSQL/runtime disposable: form đăng ký giữ nút disabled và hiện “The passwords do not match.” sau khi đồng ý điều khoản với confirmation khác; sau khi nhập confirmation khớp, thông báo biến mất và nút có thể dùng. Không submit form, không tạo account và không dùng dữ liệu người dùng.
+- Hai container preview cùng network disposable đã được xóa sau kiểm tra. Không có thay đổi tới database/deploy thật.
+
+### Rào cản và bước tiếp theo
+
+- GitHub Actions chưa được trigger remote; thay đổi workflow chỉ được chứng minh qua Docker local. Staging/public deploy vẫn chưa được xác minh.
+- OAuth provider, SMTP OTP thật, payment merchant/webhook, browser/device native E2E, backup/restore managed database và quyền deploy vẫn là phụ thuộc ngoài Git. Không bật hoặc tuyên bố các tích hợp này hoàn tất khi chưa có credentials và môi trường tách biệt.
+
+## Phiên 2026-11-06 — release gate cho dependency runtime frontend
+
+- Audit production-only của frontend hiện báo **0 vulnerabilities** trên 38 production dependencies. Thêm `audit:runtime` vào Docker release build và GitHub CI; cổng fail từ mức moderate trở lên đối với dependency runtime.
+- Audit toàn bộ vẫn báo 4 cảnh báo moderate của dependency **dev-only** `@capacitor/assets → @trapezedev/project → xcode → uuid`. Đây là tool tạo native asset, không có trong dependency runtime/browser bundle. Npm chỉ đề xuất downgrade major `@capacitor/assets` về `1.0.0`, không phải remediation an toàn cho stack Capacitor 8 đang dùng; không chạy `npm audit fix --force` và không đổi lockfile mù quáng.
+
+### Files thay đổi trong increment
+
+- `frontend/package.json`
+- `Dockerfile`
+- `.github/workflows/ci.yml`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `npm.cmd run audit:runtime` → **0 vulnerabilities**; `npm.cmd run lint` → PASS.
+- `npm.cmd audit --omit=dev --json` → 0 info/low/moderate/high/critical production vulnerabilities.
+- `npm.cmd audit --json` → 4 moderate, chỉ chuỗi dev tool đã nêu; không có high/critical.
+- `docker build --tag selfforge:local-preflight-v53-runtime-audit-gated .` → PASS, image `sha256:d268714ff912…`; frontend stage đã chạy audit runtime, lint, suites/frontend build và backend `mvn verify` trước runtime image.
+
+### Rào cản và bước tiếp theo
+
+- Cần theo dõi release tương thích mới của `@capacitor/assets`/chuỗi `xcode`; chỉ nâng cấp khi có remediation không downgrade stack, rồi chạy native release checks/build trên Android/iOS. Đây là hygiene toolchain, không phải lỗ hổng runtime đang phát hành.
+- Remote CI, staging/public deploy, credentials provider và nghiệm thu browser/native thực vẫn chưa có bằng chứng; không coi local release gate là deploy thành công.
+
+## Phiên 2026-11-06 — production smoke trên release candidate hiện tại
+
+- Chạy smoke đầy đủ trên chính image `selfforge:local-preflight-v53-runtime-audit-gated`, PostgreSQL 16 disposable, giới hạn **512 MiB / 1 CPU**. Không kết nối Render, production/staging database, provider OAuth/email/payment hoặc dữ liệu người dùng.
+- Smoke xác minh startup và restart Flyway V1–V53, frontend asset/SPA route, đăng ký, feedback/metrics beta được khóa quyền, profile conflict, habit schedule history, scheduled-rest focus, check-in idempotency/correction/XP, challenge/companion, journal/goal/restart persistence, export riêng tư, account isolation, đổi mật khẩu thu hồi session, login throttle, logout, reminder pause/restore và xóa account.
+
+### Kiểm chứng
+
+- `scripts/smoke-production.ps1 -Image selfforge:local-preflight-v53-runtime-audit-gated -MemoryMb 512 -CpuLimit 1 -StartupTimeoutSeconds 180` → **PASS**.
+- Readiness: **44.18 s** khi khởi động và **42.44 s** sau restart.
+- Sau `finally` cleanup, kiểm tra read-only `docker ps -a --filter name=sf-smoke-` → không còn container smoke.
+- `git diff --check` → không có whitespace error; chỉ có cảnh báo CRLF chuẩn trên Windows.
+
+### Giới hạn còn lại
+
+- Đây là production-like local evidence, không phải kết quả staging/public. GitHub Actions remote, deploy Render/Fly, managed backup/restore, provider OAuth/SMTP/payment và browser/native device E2E vẫn chưa được thực hiện hoặc xác minh.
+
+## Phiên 2026-11-06 — kiểm tra read-only deployment Render hiện có
+
+- Thử kiểm tra read-only URL public hiện có `https://selfforge-evol.onrender.com/api/health` để phân biệt release đang public với release candidate local. Không gửi credential, không gọi mutation, không deploy hay thay đổi dữ liệu.
+- `Invoke-WebRequest` có giới hạn 30 giây không nhận được response; một lần fallback duy nhất bằng `curl --max-time 10` cũng hết hạn với HTTP `000` và 0 byte nhận được.
+
+### Rào cản và bước tiếp theo
+
+- Từ môi trường hiện tại không thể xác minh health của URL Render. Có thể là service sleep, sự cố service/deploy hoặc đường mạng, nhưng không suy đoán nguyên nhân chỉ từ timeout và không retry liên tục.
+- Cần kiểm tra Render dashboard/log/health từ tài khoản chủ dự án hoặc thực hiện staging deploy có quan sát. Release candidate cục bộ vẫn **không** được coi là đã public; không có thay đổi source/config production trong increment này.
+
+## Phiên 2026-11-06 — OTP fail-closed không tiêu quota khi delivery tắt
+
+- Sửa thứ tự ở ba endpoint có thể yêu cầu email: password reset, registration OTP và email verification của account. Nếu email delivery chưa cấu hình/đang tắt, controller trả `503` **trước khi** reserve budget trong `EmailRequestLimiter`.
+- Service vẫn kiểm tra availability lại ngay trước khi tạo/gửi OTP, nên không có cửa sổ làm yếu fail-closed hoặc rate-limit khi provider đang bật. Thay đổi chỉ ngăn các request vào tính năng bị tắt làm đầy global/per-email/per-client quota rồi trả kết quả không đúng (`429` thay vì `503`).
+- Thêm regression cho cả ba controller: delivery không khả dụng phải trả `503` và không được gọi limiter; các regression hạn mức sẵn có vẫn xác nhận quota chung chặn request trước khi lookup/sending mail khi delivery hoạt động.
+
+### Files thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/auth/PasswordResetService.java`, `RegistrationVerification.java`
+- `src/main/java/com/selfforge/discipline/auth/PasswordResetController.java`, `RegistrationController.java`, `EmailVerificationController.java`
+- `src/test/java/com/selfforge/discipline/EmailRequestLimiterTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=EmailRequestLimiterTests,PasswordResetTests,RegistrationTests` → **23 PASS** (6 limiter + 8 reset + 9 registration), 0 failure/error/skip.
+- `mvn -B test -Dtest=ProductionSafetyTests,MigrationSchemaTests` → **335 PASS**, 0 failure/error/skip.
+- `mvn -B -Ppostgres-tests -Dit.test=PostgresMigrationIT#productionStartupAndRestartPreserveData test-compile failsafe:integration-test failsafe:verify` → PostgreSQL 16/Flyway V53 **1 PASS**, 0 failure/error/skip.
+- `docker build --tag selfforge:local-preflight-v53-email-gate .` → PASS, image `sha256:8fbf934df3a9…`.
+- `scripts/smoke-production.ps1 -Image selfforge:local-preflight-v53-email-gate -MemoryMb 512 -CpuLimit 1 -StartupTimeoutSeconds 180` → **PASS**. Readiness: **63.47 s** khi khởi động, **60.44 s** sau restart; không còn `sf-smoke-*` container sau cleanup.
+
+### Rào cản và bước tiếp theo
+
+- Đây vẫn là evidence local/disposable. Email provider thật, OAuth/payment, remote CI, staging/public health và managed backup/restore chưa được xác minh.
+- URL Render hiện có không phản hồi từ cả HTTP client và browser service của môi trường này; cần quan sát từ Render dashboard/log hoặc staging có quyền trước khi quyết định deploy release candidate.
+
+## Phiên 2026-11-06 — định danh release an toàn cho health và deploy smoke
+
+- `/api/health`, `/api/health/ready` và `/api/health/live` giờ trả thêm `release`: SHA-256 opaque của **artifact thực được đóng gói**. Giá trị không chứa commit name, URL, environment setting, credential hay dữ liệu tài khoản; status `UP`/`DOWN` và semantics liveness/readiness cũ được giữ nguyên.
+- Docker tạo `assets/release.json` sau khi copy fresh Vite bundle và trước Maven package. Digest bao gồm `pom.xml`, backend, migration và frontend bundle; vì vậy thay đổi chỉ ở backend cũng tạo release ID mới, không phụ thuộc riêng frontend update hash. Docker context đã loại trừ `src/main/resources/static`, nên layer này không thể vô tình đóng gói static asset cũ của host.
+- Thêm fallback `unknown` cho development/manual artifact không có marker thay vì làm health fail; validation chỉ chấp nhận lowercase SHA-256 64 ký tự. `app-version.json` và `release.json` được `no-cache` để browser/CDN revalidate sau deploy.
+- Production smoke bây giờ bắt buộc: release marker có hai digest hợp lệ, frontend digest của marker khớp `app-version.json`, marker được revalidate, và cả ba health endpoint báo đúng cùng release ID.
+
+### Files thay đổi trong increment
+
+- `Dockerfile`, `scripts/smoke-production.ps1`
+- `src/main/java/com/selfforge/discipline/common/ReleaseInfo.java`, `HealthController.java`, `SecurityHeadersFilter.java`
+- `src/test/java/com/selfforge/discipline/common/ReleaseInfoTests.java`, `src/test/java/com/selfforge/discipline/ProductionSafetyTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=ReleaseInfoTests,ProductionSafetyTests` → **168 PASS**, 0 failure/error/skip.
+- `docker build --tag selfforge:local-preflight-v53-release-health .` → **PASS**; backend stage chạy toàn bộ **521 tests** (0 failure/error/skip), image `sha256:626ab83a7e40…`.
+- Đọc artifact bằng container disposable xác nhận marker thực: release `fee0f90194ebd411b1050de9f56db75ce1bee00ef6de24fc6d8e9e8f6922a126`, frontend `67dbfd744a33a059db258cbe5dc54234657b20996f5ae52feff9f248fff98310`.
+- `scripts/smoke-production.ps1 -Image selfforge:local-preflight-v53-release-health -MemoryMb 512 -CpuLimit 1 -StartupTimeoutSeconds 180` → **PASS**. Readiness **56.13 s** khi startup, **56.01 s** sau restart; smoke đã xác minh marker/health trước toàn bộ luồng production-like còn lại.
+- `docker ps -a --filter name=sf-smoke-` → không còn container smoke.
+
+### Rào cản và bước tiếp theo
+
+- Local image có thể được nhận diện chính xác sau deploy, nhưng GitHub Actions remote, staging/public deploy và managed backup/restore vẫn chưa có bằng chứng. URL Render hiện tại trước đó timeout từ môi trường này; cần xem Render dashboard/log hoặc deploy staging có quyền để đối chiếu public health `release` với artifact được duyệt.
+- OAuth provider, SMTP OTP thật, payment merchant/webhook và browser/native device E2E vẫn là dependency ngoài Git; không bật hay tuyên bố các tích hợp đó hoàn tất khi chưa có credentials và môi trường tách biệt.
+
+## Phiên 2026-11-06 — regression cho đổi timezone trong lịch habit/check-in
+
+- Bổ sung regression ở luồng dịch vụ thật (tạo habit → đổi timezone profile → sửa habit → dashboard/check-in), không chỉ fixture SQL. Case là người dùng chuyển từ `Pacific/Kiritimati` sang `America/Adak` tại cùng instant: state mới có `calendarDate` sớm hơn state tạo trước đó.
+- Xác nhận timeline vẫn lấy state được ghi sau (ID làm tie-break khi `recordedAt` bằng nhau), nên schedule 5 ngày mới tiếp tục có hiệu lực vào ngày lịch sau đó và snapshot check-in ngày mới dùng đúng target/weekday mới. Không suy diễn hoặc thay đổi check-in lịch sử.
+- Đây là regression coverage cho nghiệp vụ lõi hiện hữu; không đổi API, migration, dữ liệu người dùng hay policy timezone đã kiểm chứng.
+
+### Files thay đổi trong increment
+
+- `src/test/java/com/selfforge/discipline/StreakConsumerTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=StreakConsumerTests,StreakTests,ReleaseInfoTests` → **45 PASS** (27 + 17 + 1), 0 failure/error/skip.
+
+### Rào cản và bước tiếp theo
+
+- Không có blocker kỹ thuật cho regression này. Browser/mobile E2E thực, provider credentials, staging/public deploy và managed backup/restore vẫn là các dependency ngoài Git chưa được xác minh.
+- Phần lõi lịch/check-in tiếp theo nên ưu tiên nghiệm thu UI mobile/browser của onboarding → tạo habit → check-in → xem tiến độ → quay lại, thay vì mở thêm module hoặc tự bật provider.
+
+## Phiên 2026-11-06 — Dashboard lịch sử đồng bộ target và weekday schedule
+
+- Sửa `DashboardService`: khi endpoint được gọi với ngày quá khứ, `HabitProgress.targetPerWeek` và `scheduledDays` cùng lấy từ một `HabitStateHistory` date-effective. Trước đó lịch ngày cũ có thể trả weekday schedule lịch sử nhưng target hiện tại, tạo thông tin mâu thuẫn trên UI/API.
+- Streak, check-in snapshot, XP/phạt và response cho ngày hiện tại không đổi. Khi chưa có state history, vẫn dùng fallback current schedule/target như trước, không suy diễn lịch sử legacy.
+- Bổ sung assertion cho lịch sử rest-day, profile timezone backtrack và timestamp bằng nhau để khóa cả target lẫn schedule được trình bày nhất quán.
+
+### Files thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/dashboard/DashboardService.java`
+- `src/test/java/com/selfforge/discipline/StreakConsumerTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=StreakConsumerTests,StreakTests,ProductionSafetyTests` → **211 PASS** (27 + 17 + 167), 0 failure/error/skip.
+
+### Rào cản và bước tiếp theo
+
+- Không có migration/config/provider mới trong increment. Cần browser/mobile E2E cho hành trình người dùng và staging/public verification để khép phạm vi beta; các phụ thuộc OAuth/SMTP/payment và managed backup/restore vẫn chưa có credentials/quyền cần thiết.
+
+## Phiên 2026-11-06 — tỷ lệ tuần giữ đúng target lịch sử
+
+- Hoàn thiện cùng contract Dashboard lịch sử: `weekCompletionRate` giờ dùng target của `HabitStateHistory` tại ngày đang xem, thay vì tổng target hiện tại của habit. Vì vậy, một tuần đã hoàn thành đủ 5 lượt theo lịch cũ vẫn hiển thị **100%** sau khi người dùng nâng target hiện tại lên 7.
+- Ngày Dashboard hiện tại không đổi vì state tại ngày hiện tại khớp habit đang chỉnh sửa. Check-in snapshot, streak, XP/phạt và dữ liệu legacy không bị sửa hay suy diễn lại.
+- Regression bổ sung 5 completion thứ Hai–thứ Sáu của tuần lịch sử, chốt cả `targetPerWeek`, weekday schedule và rate 1.0. Đây là test dữ liệu thực, không phải sửa UI bằng hard-code.
+
+### Files thay đổi trong increment
+
+- `src/main/java/com/selfforge/discipline/dashboard/DashboardService.java`
+- `src/test/java/com/selfforge/discipline/StreakConsumerTests.java`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `mvn -B test -Dtest=StreakConsumerTests,StreakTests,ProductionSafetyTests` → **211 PASS** (27 + 17 + 167), 0 failure/error/skip.
+
+### Rào cản và bước tiếp theo
+
+- Không có blocker kỹ thuật trong increment. Nghiệm thu browser/mobile chuẩn vẫn bị giới hạn bởi môi trường browser hiện tại; không retry in-app browser đã biết không hỗ trợ mutation/storage chuẩn.
+- Tiếp tục phạm vi có thể kiểm chứng: định tuyến các release gate và API đã sửa qua remote CI/staging khi có quyền; OAuth/SMTP/payment và managed backup/restore chờ credentials/môi trường tách biệt.
+
+## Phiên 2026-11-06 — harden công cụ đọc funnel beta hiện hữu
+
+- Rà soát phát hiện `scripts/read-beta-metrics.ps1` đã là công cụ aggregate-only hiện hữu; loại bỏ bản `get-beta-metrics.ps1` trùng lặp vừa tạo để không tạo hai contract/key convention cho cùng một thao tác vận hành.
+- Harden script gốc với `Set-StrictMode`, xác thực response thuộc đúng khoảng ngày đã yêu cầu và xác thực tất cả aggregate count là số nguyên không âm. Allowlist hiện hữu vẫn là lớp chặn account ID, email, journal hay field không mong đợi đi vào báo cáo operator.
+- Script tiếp tục yêu cầu `BETA_METRICS_KEY` **chỉ từ environment** (không nhận qua command line), dùng HTTPS cho URL deploy và chỉ cho HTTP localhost phục vụ smoke/contract test. Đây chỉ là công cụ đọc, không thay đổi dữ liệu hay rollout.
+
+### Files thay đổi trong increment
+
+- `scripts/read-beta-metrics.ps1`
+- Xóa `scripts/get-beta-metrics.ps1` trùng lặp
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- PowerShell AST parse của `scripts/read-beta-metrics.ps1` → **PASS**.
+- Chạy script khi không có key → dừng trước network với thông báo yêu cầu `BETA_METRICS_KEY`, như thiết kế.
+- Local HTTP listener disposable trả response aggregate hợp lệ → script xác thực contract và trả đúng report; listener/job đã được đóng sau test.
+- Local HTTP listener disposable trả aggregate âm → script từ chối response trước khi in report.
+- `mvn -B test -Dtest=BetaMetricsServiceTests,BetaFeedbackOperatorTests,ProductionSafetyTests` → **171 PASS** (3 + 1 + 167), 0 failure/error/skip.
+
+### Rào cản và bước tiếp theo
+
+- Chưa thể truy vấn production metrics vì chưa có public environment/operator key được cấp; không thử đoán key hay gọi lại endpoint Render đang timeout từ môi trường này.
+- Bước release tiếp theo vẫn là chạy remote CI/staging, kiểm thử onboarding trên browser/device thật, rồi mới mở lời mời beta theo đợt. SMTP/OAuth/payment thật và backup/restore managed tiếp tục chờ tài khoản provider/quyền triển khai.
+
+## Phiên 2026-11-06 — xác minh artifact sau staging/deploy
+
+- Bổ sung `scripts/verify-deployment-release.ps1`, một cổng **read-only** dành cho staging/public URL. Script xác minh `release.json`, `app-version.json`, và cả `/api/health`, `/ready`, `/live` cùng trỏ tới một release opaque SHA-256; marker release/frontend bắt buộc `no-cache` để tránh xác nhận nhầm bundle cache cũ.
+- Có thể truyền `-ExpectedRelease` từ release candidate đã duyệt để từ chối đúng trường hợp môi trường online đang chạy một artifact khác. Script không dùng credential, không gọi mutation và không truy vấn dữ liệu người dùng.
+- URL deploy bắt buộc HTTPS. HTTP chỉ được chấp nhận khi người vận hành nêu rõ `-AllowInsecureLocalhost`, phục vụ contract test disposable; không phải lối tắt cho staging/production.
+
+### Files thay đổi trong increment
+
+- `scripts/verify-deployment-release.ps1`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- PowerShell AST parse → **PASS**.
+- Local HTTP listener disposable mô phỏng đủ marker và ba health endpoint → script xác minh đúng release/frontend/3 health endpoint, **PASS**; listener/job được đóng sau test.
+- Local HTTP không có switch explicit → bị từ chối bởi HTTPS guard, **PASS**.
+- Local marker có release khác `-ExpectedRelease` → script từ chối trước khi kiểm tra health endpoint, **PASS**.
+- `git diff --check` → không có whitespace error; chỉ có cảnh báo CRLF chuẩn trên Windows worktree.
+
+### Rào cản và bước tiếp theo
+
+- Không chạy script vào Render URL vì endpoint này đã timeout từ môi trường hiện tại và không có staging/public deployment mới để đối chiếu. Không retry/poll khi chưa có tín hiệu trạng thái thay đổi.
+- Khi có deploy được duyệt, người vận hành chạy script với URL và release digest của image đã kiểm thử; sau đó mới thực hiện smoke journey browser/device thật. SMTP/OAuth/payment, managed backup/restore và quyền deploy vẫn là dependency ngoài repository.
+
+## Phiên 2026-11-06 — làm gọn màn Premium khi chưa mở bán
+
+- Sửa spacing của card “Premium chưa mở bán”. Global CSS reset margin về 0 khiến tiêu đề, nội dung, lỗi và nút tải lại dính sát nhau; card nay có grid gap rõ ràng, độ rộng đọc hợp lý, nút căn trái và error state có nền/border riêng.
+- Bỏ ba nút disabled “Sắp ra mắt” lặp lại ở từng gói. Chúng được thay bằng status “Chưa mở bán”, giảm mật độ control không thao tác được và tránh tạo ấn tượng có checkout khi payment chưa được nghiệm thu.
+- Bổ sung bản dịch English cho status mới. Không đổi giá, quyền Premium, API payment, feature flag hay bất kỳ luồng thanh toán nào.
+
+### Files thay đổi trong increment
+
+- `frontend/src/pages/PremiumPage.jsx`
+- `frontend/src/index.css`
+- `frontend/src/utils/premiumEnglish.js`, `frontend/src/utils/language.test.js`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `npm.cmd test` → **505 PASS**, 0 failure/cancel/skip.
+- `npm.cmd run lint` → **PASS**.
+- `npm.cmd run build` → **PASS** (Vite 8.3.5).
+
+### Rào cản và bước tiếp theo
+
+- Premium vẫn chưa mở bán: provider sandbox/merchant, QR/checkout UX, webhook staging, đối soát và policy refund chưa được cấu hình/nghiệm thu. Không bật payment hoặc hứa hẹn kích hoạt tự động từ chỉnh sửa UI này.
+- Tiếp tục ưu tiên beta core: browser/device E2E và staging/public verification khi có môi trường/quyền phù hợp; provider thực và backup/restore managed vẫn là dependency ngoài repository.
+
+## Phiên 2026-11-06 — chọn ngôn ngữ trước đăng ký và giữ preference account
+
+- Landing page nay có selector VI/EN gọn, nên người dùng nước ngoài có thể đọc landing và vào đăng ký/đăng nhập bằng ngôn ngữ họ chọn thay vì chỉ phụ thuộc vào locale trình duyệt.
+- Sửa gap đồng bộ preference: một lựa chọn **chủ động** khi chưa đăng nhập sẽ được gửi vào account sau khi đăng ký/đăng nhập chỉ khi account chưa có language preference. Preference đã lưu trên server luôn thắng; landing công khai không thể ghi đè lựa chọn của account từ thiết bị khác.
+- Chỉ preference `vi`/`en` hợp lệ được đưa vào hàng đợi sync; offline/failure vẫn dùng ngôn ngữ local và retry theo cơ chế `online` hiện hữu. Không đổi schema/API vì account language V44 và `PATCH /profile` đã có sẵn.
+
+### Files thay đổi trong increment
+
+- `frontend/src/pages/LandingPage.jsx`, `frontend/src/index.css`
+- `frontend/src/context/LanguageProvider.jsx`
+- `frontend/src/utils/language.js`, `frontend/src/utils/language.test.js`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- Regression unit cho lựa chọn public: account chưa có preference nhận `vi`/`en` hợp lệ; account có preference luôn trả `null` cho pending sync → **PASS**.
+- `npm.cmd test` → **506 PASS**, 0 failure/cancel/skip.
+- `npm.cmd run lint` → **PASS**.
+- `npm.cmd run build` → **PASS** (Vite 8.3.5).
+
+### Rào cản và bước tiếp theo
+
+- Cần browser/device E2E chuẩn để quan sát đầy đủ landing → chọn EN → đăng ký → reload/thiết bị thứ hai; môi trường browser hiện tại không phù hợp và không được dùng thay cho nghiệm thu đó.
+- SMTP/OAuth/payment thật, staging/public deployment và managed backup/restore vẫn là dependency ngoài repository; không có provider nào được bật trong increment này.
+
+## Phiên 2026-11-06 — ngôn ngữ nhất quán ở trang pháp lý công khai
+
+- Thêm language selector gọn vào header của `/privacy` và `/terms`. Người mở link trực tiếp nay có thể chọn VI/EN ngay tại trang, thay vì phải quay qua landing hay login.
+- Tái sử dụng `LanguageSelector` với variant compact; không sao chép logic preference/sync. Header giữ các link legal hiện có, responsive wrap và label select vẫn hiển thị rõ cho accessibility.
+- Nội dung pháp lý vốn đã có đủ hai bản ngôn ngữ theo `LanguageProvider`; increment này chỉ mở đường cho người chưa đăng nhập đổi preference ở chính điểm cần đọc điều khoản.
+
+### Files thay đổi trong increment
+
+- `frontend/src/components/LanguageSelector.jsx`
+- `frontend/src/pages/PublicInformationPage.jsx`
+- `frontend/src/index.css`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `npm.cmd test` → **506 PASS**, 0 failure/cancel/skip.
+- `npm.cmd run lint` → **PASS**.
+- `npm.cmd run build` → **PASS** (Vite 8.3.5).
+
+### Rào cản và bước tiếp theo
+
+- Nghiệm thu tương tác trên browser/mobile chuẩn vẫn cần môi trường phù hợp; không dùng in-app browser thiếu storage/mutation chuẩn để thay thế E2E.
+- Provider email/OAuth/payment, staging/public verification và managed backup/restore tiếp tục cần credentials/quyền ngoài repository.
+
+## Phiên 2026-11-06 — release candidate local sau cập nhật UI công khai
+
+- Không sửa thêm source trong increment này. Đã build lại toàn bộ worktree hiện tại thành image `selfforge:local-preflight-public-ui`, để kiểm chứng các thay đổi UI công khai cùng các thay đổi backend/migration đang có mà không ghi đè chúng.
+- Image có manifest digest `sha256:dc4fe48df10acd88344451b8fb1a9ffe942caae1748093844c7d47901b891a96` (tạo lúc `2026-11-06T14:51:39Z`). Docker cleanup không còn container smoke `sf-smoke-*`.
+
+### Files thay đổi trong increment
+
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- Docker build `selfforge:local-preflight-public-ui` → **PASS**: frontend runtime audit/lint/test/build gates hoàn tất; Maven `verify` → **522 tests PASS**, 0 failure/error/skip.
+- Flyway migration validation/apply trong build → **PASS** đến schema `V53`.
+- `scripts/smoke-production.ps1 -Image selfforge:local-preflight-public-ui -MemoryMb 512 -CpuLimit 1 -StartupTimeoutSeconds 180` → **PASS**. Container ready sau 52.03s, restart ready sau 37.54s; kiểm tra assets, registration, feedback/metrics beta, habit/challenge/companion, journal/goal/restart, export, isolation, đổi mật khẩu/session revocation, login throttling, reminder và xóa account đều qua.
+- `git diff --check` → không có whitespace error; chỉ còn cảnh báo CRLF chuẩn trên Windows worktree.
+
+### Rào cản và bước tiếp theo
+
+- Đây là release candidate **local**, chưa phải deployment công khai. Không có quyền/xác thực staging hoặc deploy trong phiên này; endpoint Render trước đó timeout từ môi trường hiện tại nên không retry/poll khi chưa có tín hiệu mới.
+- Trước khi phát hành beta thật: deploy image/commit đã chốt vào staging, chạy `scripts/verify-deployment-release.ps1` với release digest thực tế, sau đó làm browser/device E2E. SMTP/OAuth/payment thật và managed backup/restore vẫn cần credentials/quyền của người vận hành.
+
+## Phiên 2026-11-06 — audit handoff phát hành beta
+
+- Đối chiếu Git chỉ-đọc: local `main` đang ở `5d99bf4`, trong khi `origin/main` vẫn ở `d24d80e`. Release candidate Docker đã kiểm thử được build từ các thay đổi **chưa commit** trong worktree hiện tại, gồm cả nhiều file có nguồn gốc từ các lượt trước.
+- Không stage, commit, push hoặc deploy: không thể suy ra từ build PASS rằng toàn bộ thay đổi lẫn trong worktree đã được chủ dự án duyệt để công bố.
+- Pipeline tracked của GitHub là deploy thủ công Fly.io và cần `FLY_API_TOKEN`; Render dùng Blueprint riêng và vẫn yêu cầu ba biến database thiết lập ngoài Git. Cả hai chưa có bằng chứng run remote/staging trong phiên này.
+
+### Files thay đổi trong increment
+
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `git remote -v`, `git branch --show-current`, `git log -5 --oneline --decorate` và đọc `.github/workflows/deploy.yml`/`render.yaml` → xác nhận remote, commit divergence và các dependency deploy nêu trên.
+- Không gọi endpoint Render, không trigger GitHub Actions, không ghi remote và không thay đổi secret/cloud resource.
+
+### Rào cản và bước tiếp theo
+
+- Cần chủ dự án xác nhận phạm vi commit/push của worktree đã kiểm thử, sau đó mới có thể chạy CI remote/deploy staging. Vì worktree có nhiều thay đổi chưa commit, không an toàn để tự chọn và công bố chúng.
+- Sau deploy staging thành công: chạy `scripts/verify-deployment-release.ps1` với release digest của artifact deployed rồi nghiệm thu browser/device E2E. Provider SMTP/OAuth/payment và backup/restore managed tiếp tục là dependency riêng.

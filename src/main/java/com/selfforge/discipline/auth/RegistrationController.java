@@ -20,6 +20,7 @@ public class RegistrationController {
     @PostMapping("/request")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String, String> request(@Valid @RequestBody PasswordResetController.EmailRequest request, HttpServletRequest servletRequest) {
+        verification.requireRegistrationAvailable();
         limiter.acquire(request.email(), clientAddress.resolve(servletRequest));
         try { verification.request(request.email()); }
         catch (DataIntegrityViolationException concurrentRequest) {

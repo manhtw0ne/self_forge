@@ -147,18 +147,16 @@ public class AuthService {
         }
         String normalizedEmail = normalizeEmail(email);
         AppUser user = userRepository.findByEmail(normalizedEmail).orElse(null);
-        if (user == null) {
-            requireTerms(termsAccepted);
-            // OAuth cannot carry the invitation secret through a provider redirect.
-            // Keep it disabled for new accounts while a closed beta is gated.
-            if (requiresBetaInvite()) throw new BetaInviteRequired();
-            user = new AppUser(normalizedEmail, displayName, passwordHasher.hash(tokenService.newToken()));
-            user.acceptTerms(termsVersion, Instant.now());
-            user = userRepository.save(user);
-        } else {
-            user = userRepository.lockById(user.getId()).orElseThrow();
-            entityManager.refresh(user);
-        }
+        // A provider-supplied email is not proof that the caller controls a
+        // pre-existing SelfForge account. Linking requires its own re-auth flow.
+        if (user != null) throw new OAuthAccountLinkRequired();
+        requireTerms(termsAccepted);
+        // OAuth cannot carry the invitation secret through a provider redirect.
+        // Keep it disabled for new accounts while a closed beta is gated.
+        if (requiresBetaInvite()) throw new BetaInviteRequired();
+        user = new AppUser(normalizedEmail, displayName, passwordHasher.hash(tokenService.newToken()));
+        user.acceptTerms(termsVersion, Instant.now());
+        user = userRepository.save(user);
         OAuthIdentity existingProvider = oauthIdentities.lockByProviderAndUserId(provider, user.getId()).orElse(null);
         if (existingProvider == null) {
             oauthIdentities.save(new OAuthIdentity(provider, providerSubject, user, Instant.now()));
@@ -173,6 +171,35 @@ public class AuthService {
     public AuthResponse createOAuthSession(Long userId) {
         AppUser user = userRepository.lockById(userId).orElseThrow();
         return createSession(user, AccountSecurityEventType.SIGNED_IN_WITH_OAUTH);
+    }
+
+    /** Links a verified provider subject only after a separately re-authenticated account flow. */
+    @Transactional
+    public void linkOAuthIdentity(Long userId, OAuthProvider provider, String providerSubject, String credentialHash) {
+        if (userId == null || userId < 1 || providerSubject == null || providerSubject.isBlank()
+                || providerSubject.length() > 255 || credentialHash == null || credentialHash.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Không xác minh được tài khoản mạng xã hội.");
+        }
+        AppUser user = userRepository.lockById(userId).orElseThrow();
+        if (!MessageDigest.isEqual(tokenService.hash(user.getPasswordHash()).getBytes(StandardCharsets.UTF_8),
+                credentialHash.getBytes(StandardCharsets.UTF_8))) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên liên kết đã hết hiệu lực.");
+        }
+        OAuthIdentity subjectIdentity = oauthIdentities.lockByProviderAndSubject(provider, providerSubject).orElse(null);
+        if (subjectIdentity != null) {
+            if (!subjectIdentity.user.getId().equals(userId)) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Không xác minh được tài khoản mạng xã hội.");
+            }
+            return;
+        }
+        OAuthIdentity providerIdentity = oauthIdentities.lockByProviderAndUserId(provider, userId).orElse(null);
+        if (providerIdentity != null) {
+            if (!providerSubject.equals(providerIdentity.providerSubject)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Tài khoản đã liên kết nhà cung cấp này.");
+            }
+            return;
+        }
+        oauthIdentities.save(new OAuthIdentity(provider, providerSubject, user, Instant.now()));
     }
 
     public void logout(String token) {
@@ -209,6 +236,13 @@ public class AuthService {
     public static final class TermsRequired extends ResponseStatusException {
         public TermsRequired() {
             super(HttpStatus.BAD_REQUEST, "Bạn cần đồng ý Điều khoản sử dụng và Thông báo quyền riêng tư.");
+        }
+    }
+
+    /** Prevents account takeover through a provider email that matches a local account. */
+    public static final class OAuthAccountLinkRequired extends ResponseStatusException {
+        public OAuthAccountLinkRequired() {
+            super(HttpStatus.CONFLICT, "Email này đã có tài khoản. Hãy đăng nhập tài khoản đó để liên kết phương thức mới.");
         }
     }
 

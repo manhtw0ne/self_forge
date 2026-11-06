@@ -57,7 +57,7 @@ class PostgresMigrationIT extends ProductionSafetyTests {
         String email = "restart@example.com";
         var user = users.save(new com.selfforge.discipline.auth.AppUser(email, "Restart", "test-hash"));
         Long userId = user.getId();
-        assertEquals("50", flyway.info().current().getVersion().getVersion());
+        assertEquals("53", flyway.info().current().getVersion().getVersion());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(0, jdbc.queryForObject("select count(*) from app_user where email = 'demo@selfforge.local'", Integer.class));
         try (var restarted = new SpringApplicationBuilder(DisciplineApiApplication.class)
@@ -68,7 +68,7 @@ class PostgresMigrationIT extends ProductionSafetyTests {
                         "--spring.datasource.password=" + postgres.getPassword())) {
             var db = restarted.getBean(JdbcTemplate.class);
             assertEquals(userId, db.queryForObject("select id from app_user where email = ?", Long.class, email));
-            assertEquals(50, db.queryForObject("select count(*) from flyway_schema_history where success = true", Integer.class));
+            assertEquals(53, db.queryForObject("select count(*) from flyway_schema_history where success = true", Integer.class));
             assertEquals(0, db.queryForObject("select count(*) from app_user where email = 'demo@selfforge.local'", Integer.class));
         }
     }

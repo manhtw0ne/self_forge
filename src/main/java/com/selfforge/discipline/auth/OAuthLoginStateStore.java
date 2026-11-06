@@ -9,7 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class OAuthLoginStateStore {
-    record ConsumedState(boolean valid, String verifier, String returnPath, String nativeHandoffHash, boolean termsAccepted) {}
+    record ConsumedState(boolean valid, String verifier, String returnPath, String nativeHandoffHash,
+                         Long linkUserId, String linkCredentialHash, boolean termsAccepted) {}
     private final OAuthLoginStateRepository states;
     private final TokenService tokens;
     private final Clock clock;
@@ -32,10 +33,24 @@ class OAuthLoginStateStore {
 
     @Transactional
     String create(OAuthProvider provider, String verifier, String returnPath, String nativeHandoffHash, boolean termsAccepted) {
+        return create(provider, verifier, returnPath, nativeHandoffHash, null, null, termsAccepted);
+    }
+
+    @Transactional
+    String createLink(OAuthProvider provider, String verifier, String returnPath, String nativeHandoffHash,
+            Long linkUserId, String credentialHash) {
+        if (linkUserId == null || linkUserId < 1 || credentialHash == null || credentialHash.isBlank()) {
+            throw new IllegalArgumentException("Invalid OAuth link account");
+        }
+        return create(provider, verifier, returnPath, nativeHandoffHash, linkUserId, credentialHash, false);
+    }
+
+    private String create(OAuthProvider provider, String verifier, String returnPath, String nativeHandoffHash,
+                          Long linkUserId, String linkCredentialHash, boolean termsAccepted) {
         Instant now = clock.instant();
         states.deleteByExpiresAtBefore(now.minus(Duration.ofDays(1)));
         String raw = tokens.newToken();
-        states.save(new OAuthLoginState(tokens.hash(raw), provider, verifier, returnPath, nativeHandoffHash, termsAccepted,
+        states.save(new OAuthLoginState(tokens.hash(raw), provider, verifier, returnPath, nativeHandoffHash, linkUserId, linkCredentialHash, termsAccepted,
                 now.plus(Duration.ofMinutes(10)), now));
         return raw;
     }
@@ -48,10 +63,11 @@ class OAuthLoginStateStore {
         if (state == null) return invalid();
         states.delete(state);
         if (!provider.name().equals(state.provider) || !state.expiresAt.isAfter(now)) return invalid();
-        return new ConsumedState(true, state.codeVerifier, state.returnPath, state.nativeHandoffHash, state.termsAccepted);
+        return new ConsumedState(true, state.codeVerifier, state.returnPath, state.nativeHandoffHash, state.linkUserId,
+                state.linkCredentialHash, state.termsAccepted);
     }
 
     private static ConsumedState invalid() {
-        return new ConsumedState(false, null, "/", null, false);
+        return new ConsumedState(false, null, "/", null, null, null, false);
     }
 }

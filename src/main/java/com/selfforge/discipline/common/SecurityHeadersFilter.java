@@ -54,7 +54,8 @@ public class SecurityHeadersFilter implements Filter {
         if (path.startsWith("/api/")) {
             httpResponse.setHeader("Cache-Control", "no-store");
         } else if (path.equals("/sw.js") || path.equals("/manifest.webmanifest") || path.equals("/offline.html")
-                || path.equals("/index.html") || !path.substring(path.lastIndexOf('/') + 1).contains(".")) {
+                || path.equals("/index.html") || path.equals("/assets/app-version.json") || path.equals("/assets/release.json")
+                || !path.substring(path.lastIndexOf('/') + 1).contains(".")) {
             httpResponse.setHeader("Cache-Control", "no-cache");
         }
 

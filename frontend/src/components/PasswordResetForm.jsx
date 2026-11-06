@@ -4,6 +4,7 @@ import { retryAfterSeconds } from '../utils/retryAfter';
 import { useLanguage } from '../context/useLanguage';
 import { useRef, useState } from 'react';
 import api from '../api/client';
+import { hasPasswordConfirmationMismatch } from '../utils/passwordConfirmation';
 
 export default function PasswordResetForm({ initialEmail, onBack }) {
   const { t, language } = useLanguage();
@@ -19,6 +20,7 @@ export default function PasswordResetForm({ initialEmail, onBack }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const passwordMismatch = hasPasswordConfirmationMismatch(password, confirmation);
 
   const requestCode = async (event) => {
     event?.preventDefault();
@@ -44,7 +46,7 @@ export default function PasswordResetForm({ initialEmail, onBack }) {
   const confirm = async (event) => {
     event.preventDefault();
     if (guard.current) return;
-    if (password !== confirmation) {
+    if (passwordMismatch) {
       setError('Mật khẩu xác nhận không khớp.');
       return;
     }
@@ -102,12 +104,14 @@ export default function PasswordResetForm({ initialEmail, onBack }) {
                 <div className="form-group">
                   <label htmlFor="reset-confirm" className="form-label">{t('Nhập lại mật khẩu mới')}</label>
                   <PasswordInput id="reset-confirm" type="password" autoComplete="new-password" className="form-input"
-                    minLength={10} maxLength={128} value={confirmation} onChange={event => setConfirmation(event.target.value)} required />
+                    minLength={10} maxLength={128} value={confirmation} onChange={event => setConfirmation(event.target.value)} required
+                    aria-invalid={passwordMismatch || undefined} aria-describedby={passwordMismatch ? 'reset-confirm-password-error' : undefined} />
+                  {passwordMismatch && <p id="reset-confirm-password-error" role="status" className="password-confirmation-error">{t('Mật khẩu xác nhận không khớp.')}</p>}
                 </div>
                 <p>{language === 'en' ? 'Use at least 10 characters; do not use your email as the password.' : 'Mật khẩu mới cần ít nhất 10 ký tự; không dùng email làm mật khẩu.'}</p>
               </>
             )}
-            <button className="btn btn-primary" type="submit" disabled={!sent && cooldown > 0}>{busy ? t('Đang xử lý…') : sent ? t('Đặt lại mật khẩu') : t('Gửi mã xác nhận')}</button>
+            <button className="btn btn-primary" type="submit" disabled={(!sent && cooldown > 0) || (sent && passwordMismatch)}>{busy ? t('Đang xử lý…') : sent ? t('Đặt lại mật khẩu') : t('Gửi mã xác nhận')}</button>
             {!sent && cooldown > 0 && <p role="status">{t('Gửi lại sau {seconds}s', { seconds: cooldown })}</p>}
             {sent && <button className="btn btn-secondary" type="button" style={{ marginTop: '0.75rem' }}
               disabled={cooldown > 0} onClick={requestCode}>{cooldown ? t('Gửi lại sau {seconds}s', { seconds: cooldown }) : t('Gửi lại mã')}</button>}

@@ -1,6 +1,7 @@
 import {Link, useLocation} from 'react-router-dom';
 import {useLanguage} from '../context/useLanguage';
 import {configuredSupportEmail} from '../utils/supportContact';
+import LanguageSelector from '../components/LanguageSelector';
 
 const supportEmail = configuredSupportEmail(import.meta.env.VITE_SUPPORT_EMAIL);
 
@@ -47,7 +48,7 @@ export default function PublicInformationPage({kind}) {
   const privacy = kind === 'privacy';
   const title = privacy ? (en ? 'Privacy notice' : 'Thông báo quyền riêng tư') : (en ? 'Terms of use' : 'Điều khoản sử dụng');
   return <main className="public-information-page">
-    <header className="public-information-header"><Link className="brand-heading" to="/login" aria-label={en ? 'Return to sign in' : 'Quay lại đăng nhập'}><img src="/icons/icon-192.png" className="brand-logo" alt="" width="44" height="44"/>SelfForge</Link><nav aria-label={en ? 'Legal pages' : 'Trang pháp lý'}><Link aria-current={privacy ? 'page' : undefined} to="/privacy">{en ? 'Privacy' : 'Quyền riêng tư'}</Link><Link aria-current={!privacy ? 'page' : undefined} to="/terms">{en ? 'Terms' : 'Điều khoản'}</Link></nav></header>
+    <header className="public-information-header"><Link className="brand-heading" to="/login" aria-label={en ? 'Return to sign in' : 'Quay lại đăng nhập'}><img src="/icons/icon-192.png" className="brand-logo" alt="" width="44" height="44"/>SelfForge</Link><div className="public-information-header-actions"><LanguageSelector compact /><nav aria-label={en ? 'Legal pages' : 'Trang pháp lý'}><Link aria-current={privacy ? 'page' : undefined} to="/privacy">{en ? 'Privacy' : 'Quyền riêng tư'}</Link><Link aria-current={!privacy ? 'page' : undefined} to="/terms">{en ? 'Terms' : 'Điều khoản'}</Link></nav></div></header>
     <article className="public-information-card"><p className="public-information-meta">{en ? 'Last updated: 28 October 2026' : 'Cập nhật lần cuối: 28/10/2026'}</p><h1>{title}</h1>{privacy ? <Privacy en={en}/> : <Terms en={en}/>}<footer><Link className="btn btn-secondary" to={`/login?next=${encodeURIComponent(pathname)}`}>{en ? 'Return to sign in' : 'Quay lại đăng nhập'}</Link></footer></article>
   </main>;
 }

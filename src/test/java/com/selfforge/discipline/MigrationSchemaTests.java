@@ -30,7 +30,7 @@ class MigrationSchemaTests extends ProductionSafetyTests {
     @Autowired JdbcTemplate jdbc;
 
     @Test void migrationIsAppliedOnceAndRetainsData() {
-        assertEquals("50", flyway.info().current().getVersion().getVersion());
+        assertEquals("53", flyway.info().current().getVersion().getVersion());
         Long before = jdbc.queryForObject("select count(*) from achievement", Long.class);
         assertTrue(before > 0);
         assertEquals(0, flyway.migrate().migrationsExecuted);

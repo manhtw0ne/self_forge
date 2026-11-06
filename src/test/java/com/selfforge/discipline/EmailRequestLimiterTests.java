@@ -34,7 +34,10 @@ class EmailRequestLimiterTests {
                     .andExpect(header().string("Retry-After", "60"))
                     .andExpect(header().string("Cache-Control", "no-store"));
         }
-        verifyNoInteractions(reset, registration);
+        // Availability is checked before reserving quota; no mail/account work runs after the limit rejects.
+        verify(reset).requireAvailable();
+        verify(registration).requireRegistrationAvailable();
+        verifyNoMoreInteractions(reset, registration);
     }
 
     @Test void publicEmailEndpointsShareTheClientBudgetBeforeMailWork() throws Exception {
@@ -57,7 +60,40 @@ class EmailRequestLimiterTests {
         mvc.perform(post("/api/auth/password-reset/request").with(sameClient).contentType("application/json")
                 .content("{\"email\":\"third@example.com\"}"))
                 .andExpect(status().isTooManyRequests());
-        verifyNoInteractions(reset, registration);
+        verify(reset).requireAvailable();
+        verifyNoMoreInteractions(reset, registration);
+    }
+
+    @Test void unavailableDeliveryDoesNotConsumeAnyEmailRequestBudget() throws Exception {
+        var reset = mock(PasswordResetService.class);
+        var registration = mock(RegistrationVerification.class);
+        var auth = mock(AuthService.class);
+        var current = mock(CurrentUserService.class);
+        var limiter = mock(EmailRequestLimiter.class);
+        var user = new AppUser("verified@example.com", "Verified", "password-hash");
+        when(current.requireUser(any())).thenReturn(user);
+        doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE))
+                .when(reset).requireAvailable();
+        doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE))
+                .when(registration).requireRegistrationAvailable();
+        doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE))
+                .when(registration).requireAccountVerificationAvailable();
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
+                new PasswordResetController(reset, limiter, new ClientAddressResolver(false)),
+                new RegistrationController(registration, limiter, auth, new ClientAddressResolver(false)),
+                new EmailVerificationController(current, registration, limiter, new ClientAddressResolver(false)))
+                .setControllerAdvice(new com.selfforge.discipline.common.ApiExceptionHandler()).build();
+
+        mvc.perform(post("/api/auth/password-reset/request").contentType("application/json")
+                .content("{\"email\":\"user@example.com\"}")) .andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/api/auth/registration/request").contentType("application/json")
+                .content("{\"email\":\"user@example.com\"}")) .andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/api/profile/email-verification/request")) .andExpect(status().isServiceUnavailable());
+
+        verifyNoInteractions(limiter);
+        verify(reset).requireAvailable();
+        verify(registration).requireRegistrationAvailable();
+        verify(registration).requireAccountVerificationAvailable();
     }
 
     @Test void budgetResetsAtBoundaryHashesAddressesAndNormalizesInput() {

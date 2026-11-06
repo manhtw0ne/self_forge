@@ -92,6 +92,18 @@ try {
     Assert-Smoke ($runtime.Config.Env -contains 'SPRING_PROFILES_ACTIVE=prod') 'Runtime must default to prod.'
     $page = Invoke-WebRequest "$base/login" -UseBasicParsing
     Assert-Smoke ($page.Content -match 'assets/index-') 'Frontend was not included in the image.'
+    $releaseResponse = Invoke-WebRequest "$base/assets/release.json" -UseBasicParsing
+    Assert-Smoke ($releaseResponse.Headers['Cache-Control'] -match 'no-cache') 'Release marker must be revalidated after a deploy.'
+    $release = $releaseResponse.Content | ConvertFrom-Json
+    Assert-Smoke ($release.release -match '^[a-f0-9]{64}$' -and $release.frontendVersion -match '^[a-f0-9]{64}$') 'Release marker is missing a valid opaque release or frontend identifier.'
+    $frontendVersionResponse = Invoke-WebRequest "$base/assets/app-version.json" -UseBasicParsing
+    Assert-Smoke ($frontendVersionResponse.Headers['Cache-Control'] -match 'no-cache') 'Frontend version marker must be revalidated after a deploy.'
+    $frontendVersion = $frontendVersionResponse.Content | ConvertFrom-Json
+    Assert-Smoke ($frontendVersion.version -eq $release.frontendVersion) 'Release marker does not match the frontend bundle version.'
+    foreach ($healthPath in @('/api/health', '/api/health/ready', '/api/health/live')) {
+        $releaseHealth = Invoke-RestMethod "$base$healthPath"
+        Assert-Smoke ($releaseHealth.status -eq 'UP' -and $releaseHealth.release -eq $release.release) "Health endpoint $healthPath does not identify this image release."
+    }
     foreach ($route in @('/', '/login', '/privacy', '/terms', '/email-change-recovery', '/habits', '/journal', '/check-in-history', '/stats', '/challenges', '/rewards', '/pomodoro', '/review', '/goals', '/reminders', '/companion', '/coach', '/help', '/profile', '/premium')) {
         $deepLink = Invoke-WebRequest "$base$route" -UseBasicParsing
         Assert-Smoke ($deepLink.StatusCode -eq 200 -and $deepLink.Content -eq $page.Content) "Direct application route failed: $route"

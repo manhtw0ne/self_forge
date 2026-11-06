@@ -48,6 +48,7 @@ export const premiumEnglish = {
   "Mở khóa toàn bộ sức mạnh của SelfForge": "Explore advanced SelfForge features",
   "Gói đề xuất": "Featured plan",
   "Sắp ra mắt": "Coming soon",
+  "Chưa mở bán": "Not yet for sale",
   "So sánh tính năng": "Compare features",
   "Miễn phí": "Free",
   "Từ 49.000đ/tháng": "From VND 49,000/month",

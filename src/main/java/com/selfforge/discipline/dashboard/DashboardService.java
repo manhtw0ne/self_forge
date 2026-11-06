@@ -52,7 +52,14 @@ public class DashboardService {
 
         int todayScore = todayCheckIns.values().stream().mapToInt(CheckInResponse::scoreImpact).sum();
         int weekScore = weekCheckIns.stream().mapToInt(DailyCheckIn::scoreImpact).sum();
-        int weeklyTarget = habits.stream().mapToInt(Habit::getTargetPerWeek).sum();
+        // Keep the weekly summary coherent with the selected dashboard date.
+        // For current use this is the same target as the editable habit; for a
+        // historical view it prevents a later target increase from silently
+        // lowering that week's already-recorded completion rate.
+        int weeklyTarget = habits.stream().mapToInt(habit -> {
+            HabitStateHistory state = recordedStateOnDate.get(habit.getId());
+            return state == null ? habit.getTargetPerWeek() : state.getTargetPerWeek();
+        }).sum();
         long completedThisWeek = weekCheckIns.stream().filter(DailyCheckIn::isCompleted).count();
         // The dashboard already loaded the account's week once. Reuse that
         // bounded result for every visible habit instead of issuing one extra
@@ -87,6 +94,11 @@ public class DashboardService {
                                                             Map<Long, Long> completedByHabit,
                                                             Map<Long, Long> recordedSetbacks,
                                                             Map<Long, CheckInResponse> checkInsForDate) {
+        // Dashboard can be opened for a historical date. Keep the displayed
+        // weekly target and weekday schedule from the same recorded state so a
+        // later edit cannot show, for example, a five-day schedule with a
+        // current seven-day target.
+        int target = stateOnDate == null ? habit.getTargetPerWeek() : stateOnDate.getTargetPerWeek();
         String schedule = stateOnDate == null ? habit.getScheduledDays() : stateOnDate.getScheduledDays();
         boolean scheduled = (stateOnDate == null || stateOnDate.isActive())
                 && HabitSchedule.includes(schedule, selectedDate);
@@ -95,12 +107,12 @@ public class DashboardService {
                 habit.getName(),
                 habit.getDifficulty(),
                 habit.getPoints(),
-                habit.getTargetPerWeek(),
+                target,
                 schedule,
                 scheduled,
                 completedByHabit.getOrDefault(habit.getId(), 0L).intValue(),
                 recordedSetbacks.getOrDefault(habit.getId(), 0L).intValue(),
-                checkInService.currentStreak(user, habit.getId(), selectedDate, habit.getTargetPerWeek(), habit.getScheduledDays()),
+                checkInService.currentStreak(user, habit.getId(), selectedDate, target, schedule),
                 checkInsForDate.containsKey(habit.getId()) ? checkInsForDate.get(habit.getId()).status() : null
         );
     }

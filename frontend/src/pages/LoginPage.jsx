@@ -16,6 +16,7 @@ import { useToast } from '../context/useToast';
 import api from '../api/client';
 import PasswordResetForm from '../components/PasswordResetForm';
 import { authErrorMessage } from '../utils/authError';
+import { hasPasswordConfirmationMismatch } from '../utils/passwordConfirmation';
 
 export default function LoginPage() {
   const { t, language } = useLanguage();
@@ -76,6 +77,7 @@ export default function LoginPage() {
     : (language === 'en' ? 'Social sign-in was cancelled or could not be verified. Please try again.' : 'Đăng nhập mạng xã hội đã bị hủy hoặc chưa xác minh được. Hãy thử lại.');
   const oauthRequested = query.get('oauth') === '1';
   const nativePlatform = Capacitor.isNativePlatform();
+  const registrationPasswordMismatch = isRegister && hasPasswordConfirmationMismatch(password, confirmPassword);
 
   useEffect(() => {
     if (requestedMode === 'register') setIsRegister(true);
@@ -178,7 +180,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (busy.current || (!isRegister && loginCooldown.blocked())) return;
-    if (isRegister && password !== confirmPassword) {
+    if (isRegister && hasPasswordConfirmationMismatch(password, confirmPassword)) {
       setError('Mật khẩu xác nhận không khớp.');
       return;
     }
@@ -259,7 +261,9 @@ export default function LoginPage() {
             <label htmlFor="auth-confirm-password" className="form-label">{t('Nhập lại mật khẩu mới')}</label>
             <PasswordInput id="auth-confirm-password" type="password" autoComplete="new-password" className="form-input"
               value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)}
-              minLength={10} maxLength={128} disabled={loading} required />
+              minLength={10} maxLength={128} disabled={loading} required aria-invalid={registrationPasswordMismatch || undefined}
+              aria-describedby={registrationPasswordMismatch ? 'auth-confirm-password-error' : undefined} />
+            {registrationPasswordMismatch && <p id="auth-confirm-password-error" role="status" className="password-confirmation-error">{t('Mật khẩu xác nhận không khớp.')}</p>}
           </div>}
 
           {isRegister && <p>{language === 'en' ? 'Use at least 10 characters. A memorable passphrase is welcome; do not use your email as the password.' : 'Dùng ít nhất 10 ký tự. Có thể dùng cụm từ dễ nhớ; không dùng email làm mật khẩu.'}</p>}
@@ -292,7 +296,7 @@ export default function LoginPage() {
             <p role="status">{t('Đăng ký chưa sẵn sàng. Vui lòng thử lại sau.')}</p>}
           {!isRegister && loginCooldown.seconds > 0 && <p role="status">{t('Đăng nhập tạm giới hạn. Thử lại sau {seconds}s.', { seconds: loginCooldown.seconds })}</p>}
           <button type="submit" className="btn btn-primary"
-            disabled={loading || oauthCompleting || (!isRegister && loginCooldown.seconds > 0) || (isRegister && (!termsAccepted || !registrationPolicy || (registrationPolicy.required && !registrationPolicy.enabled)))}>
+            disabled={loading || oauthCompleting || (!isRegister && loginCooldown.seconds > 0) || (isRegister && (registrationPasswordMismatch || !termsAccepted || !registrationPolicy || (registrationPolicy.required && !registrationPolicy.enabled)))}>
             {loading ? t('Đang xử lý...') : isRegister ? t('Đăng ký') : t('Đăng nhập')}
           </button>
         </form>

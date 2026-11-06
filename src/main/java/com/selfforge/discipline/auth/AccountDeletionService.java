@@ -50,6 +50,8 @@ public class AccountDeletionService {
         }
         jdbc.update("delete from daily_check_in where habit_id in (select id from habit where user_id = ?)", id);
         jdbc.update("delete from habit_state_history where habit_id in (select id from habit where user_id = ?)", id);
+        // Payment events remain as de-linked reconciliation records; the order itself is personal data.
+        jdbc.update("delete from payment_order where user_id = ?", id);
         for (String table : List.of("habit", "category", "goal", "journal_entry", "mood_entry", "weekly_review", "feedback_submission",
                 "custom_reward", "user_achievement", "user_level", "password_reset_code", "email_change_code", "email_change_recovery", "auth_session", "account_security_event")) {
             jdbc.update("delete from " + table + " where user_id = ?", id);

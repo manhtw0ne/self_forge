@@ -2,6 +2,7 @@ package com.selfforge.discipline.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.UUID;
@@ -25,6 +26,7 @@ class OAuthLoginStoreTests {
     @Autowired OAuthNativeHandoffStore handoffs;
     @Autowired AppUserRepository users;
     @Autowired AuthService auth;
+    @Autowired TokenService tokens;
 
     @Test
     void stateIsSingleUseAndRejectsProviderChanges() {
@@ -46,6 +48,14 @@ class OAuthLoginStoreTests {
 
         String consenting = states.create(OAuthProvider.GOOGLE, "verifier", "/goals", null, true);
         assertTrue(states.consume(OAuthProvider.GOOGLE, consenting).termsAccepted());
+
+        AppUser linkOwner = users.saveAndFlush(new AppUser(UUID.randomUUID() + "@example.com", "Link owner", "password-hash"));
+        String linking = states.createLink(OAuthProvider.GOOGLE, "verifier", "/profile", null, linkOwner.getId(),
+                tokens.hash("password-hash"));
+        var linked = states.consume(OAuthProvider.GOOGLE, linking);
+        assertTrue(linked.valid());
+        assertEquals(linkOwner.getId(), linked.linkUserId());
+        assertEquals(tokens.hash("password-hash"), linked.linkCredentialHash());
     }
 
     @Test
@@ -72,6 +82,23 @@ class OAuthLoginStoreTests {
     }
 
     @Test
+    void nativeLinkHandoffCannotMintALoginAndOnlyTheReauthenticatedOwnerCanConsumeIt() {
+        AppUser owner = users.saveAndFlush(new AppUser(UUID.randomUUID() + "@example.com", "Link owner", "hash"));
+        AppUser other = users.saveAndFlush(new AppUser(UUID.randomUUID() + "@example.com", "Other", "hash"));
+        var created = handoffs.create(OAuthNativeHandoffPurpose.LINK);
+
+        assertEquals(OAuthNativeHandoffStore.Status.INVALID, handoffs.consume(created.raw()).status());
+        assertEquals(OAuthNativeHandoffStore.Status.PENDING, handoffs.consumeLink(created.raw(), owner.getId()).status());
+        assertThrows(IllegalStateException.class,
+                () -> handoffs.complete(created.hash(), owner.getId(), OAuthNativeHandoffPurpose.LOGIN));
+        assertEquals(OAuthNativeHandoffStore.Status.PENDING, handoffs.consumeLink(created.raw(), owner.getId()).status());
+        handoffs.complete(created.hash(), owner.getId(), OAuthNativeHandoffPurpose.LINK);
+        assertEquals(OAuthNativeHandoffStore.Status.INVALID, handoffs.consumeLink(created.raw(), other.getId()).status());
+        assertEquals(OAuthNativeHandoffStore.Status.COMPLETED, handoffs.consumeLink(created.raw(), owner.getId()).status());
+        assertEquals(OAuthNativeHandoffStore.Status.INVALID, handoffs.consumeLink(created.raw(), owner.getId()).status());
+    }
+
+    @Test
     void providerSubjectRemainsBoundToTheFirstVerifiedAccount() {
         org.junit.jupiter.api.Assertions.assertThrows(AuthService.TermsRequired.class,
                 () -> auth.authenticateWithOAuth(OAuthProvider.GOOGLE, "new-subject", UUID.randomUUID() + "@example.com", "New", false));
@@ -81,5 +108,38 @@ class OAuthLoginStoreTests {
         assertTrue(later.getEmailVerifiedAt() != null);
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> auth.authenticateWithOAuth(OAuthProvider.GOOGLE, "another-subject", first.getEmail(), "Unexpected", false));
+    }
+
+    @Test
+    void unlinkedProviderEmailCannotTakeOverAnExistingPasswordAccount() {
+        String email = UUID.randomUUID() + "@example.com";
+        AppUser existing = users.save(new AppUser(email, "Password account", "hash"));
+
+        assertThrows(AuthService.OAuthAccountLinkRequired.class,
+                () -> auth.authenticateWithOAuth(OAuthProvider.FACEBOOK, "facebook-new-subject", email, "Unexpected", true));
+        AppUser unchanged = users.findByEmail(email).orElseThrow();
+        assertEquals(existing.getId(), unchanged.getId());
+        assertFalse(unchanged.getEmailVerifiedAt() != null);
+    }
+
+    @Test
+    void explicitLinkBindsOnlyTheReauthenticatedAccountAndExpiresAfterPasswordChange() {
+        AppUser owner = users.saveAndFlush(new AppUser(UUID.randomUUID() + "@example.com", "Owner", "owner-password-hash"));
+        String proof = tokens.hash(owner.getPasswordHash());
+
+        auth.linkOAuthIdentity(owner.getId(), OAuthProvider.GOOGLE, "google-link-subject", proof);
+        AppUser signedIn = auth.authenticateWithOAuth(OAuthProvider.GOOGLE, "google-link-subject",
+                UUID.randomUUID() + "@example.com", "Changed provider email", false);
+        assertEquals(owner.getId(), signedIn.getId());
+
+        AppUser other = users.saveAndFlush(new AppUser(UUID.randomUUID() + "@example.com", "Other", "other-password-hash"));
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> auth.linkOAuthIdentity(other.getId(), OAuthProvider.GOOGLE, "google-link-subject",
+                        tokens.hash(other.getPasswordHash())));
+
+        owner.updatePasswordHash("new-owner-password-hash");
+        users.saveAndFlush(owner);
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> auth.linkOAuthIdentity(owner.getId(), OAuthProvider.FACEBOOK, "facebook-link-subject", proof));
     }
 }

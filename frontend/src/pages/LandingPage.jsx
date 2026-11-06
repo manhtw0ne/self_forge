@@ -56,7 +56,7 @@ const copy = {
 };
 
 export default function LandingPage() {
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const text = copy[language === 'en' ? 'en' : 'vi'];
 
   return <main className="landing-page fade-in">
@@ -65,7 +65,17 @@ export default function LandingPage() {
         <img src="/icons/icon-192.png" width="40" height="40" alt="" />
         <span>SelfForge</span>
       </Link>
-      <Link className="btn btn-secondary btn-sm" to="/login">{text.signIn}</Link>
+      <div className="landing-nav-actions">
+        <label className="landing-language-selector">
+          <span className="landing-visually-hidden">{language === 'en' ? 'Language' : 'Ngôn ngữ'}</span>
+          <select aria-label={language === 'en' ? 'Language' : 'Ngôn ngữ'} value={language}
+            onChange={event => setLanguage(event.target.value)}>
+            <option value="vi" lang="vi">VI</option>
+            <option value="en" lang="en">EN</option>
+          </select>
+        </label>
+        <Link className="btn btn-secondary btn-sm" to="/login">{text.signIn}</Link>
+      </div>
     </header>
 
     <section className="landing-hero" aria-labelledby="landing-title">

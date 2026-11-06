@@ -27,21 +27,33 @@ class OAuthNativeHandoffStore {
 
     @Transactional
     CreatedHandoff create() {
+        return create(OAuthNativeHandoffPurpose.LOGIN);
+    }
+
+    @Transactional
+    CreatedHandoff create(OAuthNativeHandoffPurpose purpose) {
+        if (purpose == null) throw new IllegalArgumentException("Missing OAuth handoff purpose");
         Instant now = clock.instant();
         handoffs.deleteByExpiresAtBefore(now.minus(Duration.ofDays(1)));
         String raw = tokens.newToken();
         String hash = tokens.hash(raw);
-        handoffs.save(new OAuthNativeHandoff(hash, now.plus(Duration.ofMinutes(10)), now));
+        handoffs.save(new OAuthNativeHandoff(hash, now.plus(Duration.ofMinutes(10)), now, purpose));
         return new CreatedHandoff(raw, hash);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void complete(String handoffHash, Long userId) {
+        complete(handoffHash, userId, OAuthNativeHandoffPurpose.LOGIN);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void complete(String handoffHash, Long userId, OAuthNativeHandoffPurpose expectedPurpose) {
         OAuthNativeHandoff handoff = handoffs.lockByHandoffHash(handoffHash).orElse(null);
         if (handoff == null || !handoff.expiresAt.isAfter(clock.instant())) {
             if (handoff != null) handoffs.delete(handoff);
             throw new IllegalStateException("Phiên đăng nhập trên ứng dụng đã hết hạn.");
         }
+        if (handoff.purpose != expectedPurpose) throw new IllegalStateException("Phiên đăng nhập trên ứng dụng đã hết hạn.");
         handoff.complete(users.getReferenceById(userId));
     }
 
@@ -50,6 +62,7 @@ class OAuthNativeHandoffStore {
         if (rawHandoff == null || !rawHandoff.matches("[A-Za-z0-9_-]{43}")) return invalid();
         OAuthNativeHandoff handoff = handoffs.lockByHandoffHash(tokens.hash(rawHandoff)).orElse(null);
         if (handoff == null) return invalid();
+        if (handoff.purpose != OAuthNativeHandoffPurpose.LOGIN) return invalid();
         if (!handoff.expiresAt.isAfter(clock.instant())) {
             handoffs.delete(handoff);
             return invalid();
@@ -58,6 +71,21 @@ class OAuthNativeHandoffStore {
         Long userId = handoff.user.getId();
         handoffs.delete(handoff);
         return new ConsumedHandoff(Status.COMPLETED, userId);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    ConsumedHandoff consumeLink(String rawHandoff, Long expectedUserId) {
+        if (expectedUserId == null || expectedUserId < 1 || rawHandoff == null || !rawHandoff.matches("[A-Za-z0-9_-]{43}")) return invalid();
+        OAuthNativeHandoff handoff = handoffs.lockByHandoffHash(tokens.hash(rawHandoff)).orElse(null);
+        if (handoff == null || handoff.purpose != OAuthNativeHandoffPurpose.LINK) return invalid();
+        if (!handoff.expiresAt.isAfter(clock.instant())) {
+            handoffs.delete(handoff);
+            return invalid();
+        }
+        if (handoff.user == null) return new ConsumedHandoff(Status.PENDING, null);
+        if (!expectedUserId.equals(handoff.user.getId())) return invalid();
+        handoffs.delete(handoff);
+        return new ConsumedHandoff(Status.COMPLETED, expectedUserId);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
