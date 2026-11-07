@@ -38,6 +38,13 @@ function Assert-Smoke([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
+function Get-ResponseHeader([object]$Response, [string]$Name) {
+    # Invoke-WebRequest exposes repeated headers as a scalar on Windows but as
+    # an array on PowerShell/Linux. Always collapse them before a regex check
+    # so an assertion receives one Boolean on every CI runner.
+    return [string]::Join(',', @($Response.Headers[$Name] | ForEach-Object { [string]$_ }))
+}
+
 function Assert-Unauthorized([hashtable]$Headers) {
     $status = 0
     try { $null = Invoke-WebRequest "$base/api/profile/data" -Headers $Headers -UseBasicParsing }
@@ -93,11 +100,11 @@ try {
     $page = Invoke-WebRequest "$base/login" -UseBasicParsing
     Assert-Smoke ($page.Content -match 'assets/index-') 'Frontend was not included in the image.'
     $releaseResponse = Invoke-WebRequest "$base/assets/release.json" -UseBasicParsing
-    Assert-Smoke ($releaseResponse.Headers['Cache-Control'] -match 'no-cache') 'Release marker must be revalidated after a deploy.'
+    Assert-Smoke ((Get-ResponseHeader $releaseResponse 'Cache-Control') -match 'no-cache') 'Release marker must be revalidated after a deploy.'
     $release = $releaseResponse.Content | ConvertFrom-Json
     Assert-Smoke ($release.release -match '^[a-f0-9]{64}$' -and $release.frontendVersion -match '^[a-f0-9]{64}$') 'Release marker is missing a valid opaque release or frontend identifier.'
     $frontendVersionResponse = Invoke-WebRequest "$base/assets/app-version.json" -UseBasicParsing
-    Assert-Smoke ($frontendVersionResponse.Headers['Cache-Control'] -match 'no-cache') 'Frontend version marker must be revalidated after a deploy.'
+    Assert-Smoke ((Get-ResponseHeader $frontendVersionResponse 'Cache-Control') -match 'no-cache') 'Frontend version marker must be revalidated after a deploy.'
     $frontendVersion = $frontendVersionResponse.Content | ConvertFrom-Json
     Assert-Smoke ($frontendVersion.version -eq $release.frontendVersion) 'Release marker does not match the frontend bundle version.'
     foreach ($healthPath in @('/api/health', '/api/health/ready', '/api/health/live')) {
@@ -112,21 +119,22 @@ try {
     Assert-Smoke ($assets.Count -ge 2) 'Frontend entry assets are missing.'
     foreach ($asset in $assets) {
         $response = Invoke-WebRequest "$base$($asset.Groups[1].Value)" -UseBasicParsing
-        Assert-Smoke ($response.StatusCode -eq 200 -and $response.Headers['Content-Type'] -notmatch 'text/html') 'An asset resolved to an HTML fallback.'
+        Assert-Smoke ($response.StatusCode -eq 200 -and (Get-ResponseHeader $response 'Content-Type') -notmatch 'text/html') 'An asset resolved to an HTML fallback.'
     }
     $manifestResponse = Invoke-WebRequest "$base/manifest.webmanifest" -UseBasicParsing
     $manifestText = if ($manifestResponse.Content -is [byte[]]) {
         [System.Text.Encoding]::UTF8.GetString($manifestResponse.Content)
     } else { [string]$manifestResponse.Content }
     $manifest = $manifestText | ConvertFrom-Json
-    Assert-Smoke ($manifest.display -eq 'standalone' -and $manifest.start_url -eq '/') "Install manifest is invalid: display=$($manifest.display), start_url=$($manifest.start_url), content type=$($manifestResponse.Headers['Content-Type'])."
-    Assert-Smoke ([string]$manifestResponse.Headers['Cache-Control'] -match 'no-cache') 'Install manifest must be revalidated.'
+    $manifestContentType = Get-ResponseHeader $manifestResponse 'Content-Type'
+    Assert-Smoke ($manifest.display -eq 'standalone' -and $manifest.start_url -eq '/') "Install manifest is invalid: display=$($manifest.display), start_url=$($manifest.start_url), content type=$manifestContentType."
+    Assert-Smoke ((Get-ResponseHeader $manifestResponse 'Cache-Control') -match 'no-cache') 'Install manifest must be revalidated.'
     foreach ($icon in $manifest.icons) {
         $iconResponse = Invoke-WebRequest "$base$($icon.src)" -UseBasicParsing
-        Assert-Smoke ($iconResponse.StatusCode -eq 200 -and $iconResponse.Headers['Content-Type'] -match 'image/png') 'Install icon is missing or has the wrong content type.'
+        Assert-Smoke ($iconResponse.StatusCode -eq 200 -and (Get-ResponseHeader $iconResponse 'Content-Type') -match 'image/png') 'Install icon is missing or has the wrong content type.'
     }
     $worker = Invoke-WebRequest "$base/sw.js" -UseBasicParsing
-    Assert-Smoke ($worker.Headers['Content-Type'] -match 'javascript' -and $worker.Headers['Cache-Control'] -match 'no-cache') 'Offline worker must be served as revalidated JavaScript.'
+    Assert-Smoke ((Get-ResponseHeader $worker 'Content-Type') -match 'javascript' -and (Get-ResponseHeader $worker 'Cache-Control') -match 'no-cache') 'Offline worker must be served as revalidated JavaScript.'
     $offline = Invoke-WebRequest "$base/offline.html" -UseBasicParsing
     Assert-Smoke ($offline.StatusCode -eq 200 -and $offline.Content -match 'SelfForge') 'Offline fallback is missing.'
     $inviteRequired = -not [string]::IsNullOrWhiteSpace($BetaInviteCode) -or $ManagedBetaInvites.IsPresent

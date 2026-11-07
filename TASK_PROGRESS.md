@@ -1332,3 +1332,26 @@ Bước tiếp theo: browser/mobile E2E chuẩn và các provider thật vẫn l
 
 - Cần push commit này để GitHub Actions chạy lại với `helpTopics.js` hiện diện. Chỉ khi CI remote xanh mới tiếp tục staging/deploy verification.
 - Staging/public deploy, browser/device E2E, SMTP/OAuth/payment credentials và backup/restore managed vẫn chưa được xác minh.
+
+## Phiên 2026-11-07 — chuẩn hóa header smoke cho PowerShell Linux CI
+
+- Sau fix Help, cả hai workflow remote đã qua frontend. Workflow `Verify SelfForge` qua toàn bộ backend, PostgreSQL/Flyway và native bundle. Workflow `Verify` qua PostgreSQL/Flyway và Docker production image, nhưng smoke dừng trước kiểm tra chức năng do assertion đọc `Cache-Control` nhận `System.Object[]` trên PowerShell/Linux.
+- Thêm `Get-ResponseHeader` để gộp mọi giá trị header thành một string trước các regex assertion trong `smoke-production.ps1`. Sửa tất cả check `Cache-Control`/`Content-Type`, không nới điều kiện smoke hay bỏ qua marker/asset/PWA validation.
+- Áp dụng cùng chuẩn hóa vào `verify-deployment-release.ps1`, để cổng staging/public không gặp cùng lỗi khi deploy response có lặp header.
+
+### Files thay đổi trong increment
+
+- `scripts/smoke-production.ps1`
+- `scripts/verify-deployment-release.ps1`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- PowerShell AST parse cho cả hai script → **PASS**.
+- Thử chạy smoke local sau sửa dừng trước container vì Docker Desktop không còn pipe `dockerDesktopLinuxEngine`; không retry khi daemon không khả dụng và không diễn giải đây là smoke PASS/FAIL của application.
+- Remote CI đã cung cấp bằng chứng trước fix rằng migration V1–V53 và image build đều PASS; commit kế tiếp phải chạy lại smoke Linux để xác minh assertion đã chuẩn hóa.
+
+### Rào cản và bước tiếp theo
+
+- Push fix script để CI remote kiểm chứng full image/smoke. Không deploy staging/public khi smoke chưa xanh.
+- Docker local cần được chủ dự án mở lại nếu muốn tái tạo smoke tại máy; credentials/provider và browser/device E2E vẫn là dependency ngoài repository.

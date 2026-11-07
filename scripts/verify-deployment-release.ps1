@@ -20,6 +20,10 @@ function Assert-Deployment([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
+function Get-ResponseHeader([object]$Response, [string]$Name) {
+    return [string]::Join(',', @($Response.Headers[$Name] | ForEach-Object { [string]$_ }))
+}
+
 try { $uri = [Uri]$BaseUrl }
 catch { throw 'BaseUrl must be an absolute application URL.' }
 
@@ -49,7 +53,7 @@ function Get-DeploymentJson([string]$Path) {
 
 $marker = Get-DeploymentJson '/assets/release.json'
 $release = $marker.Body
-Assert-Deployment ([string]$marker.Response.Headers['Cache-Control'] -match 'no-cache') 'Release marker must be served with Cache-Control: no-cache.'
+Assert-Deployment ((Get-ResponseHeader $marker.Response 'Cache-Control') -match 'no-cache') 'Release marker must be served with Cache-Control: no-cache.'
 Assert-Deployment ($release.release -match '^[a-f0-9]{64}$') 'Release marker has no valid opaque release identifier.'
 Assert-Deployment ($release.frontendVersion -match '^[a-f0-9]{64}$') 'Release marker has no valid frontend identifier.'
 if ($ExpectedRelease) {
@@ -57,7 +61,7 @@ if ($ExpectedRelease) {
 }
 
 $frontendMarker = Get-DeploymentJson '/assets/app-version.json'
-Assert-Deployment ([string]$frontendMarker.Response.Headers['Cache-Control'] -match 'no-cache') 'Frontend version marker must be served with Cache-Control: no-cache.'
+Assert-Deployment ((Get-ResponseHeader $frontendMarker.Response 'Cache-Control') -match 'no-cache') 'Frontend version marker must be served with Cache-Control: no-cache.'
 Assert-Deployment ($frontendMarker.Body.version -eq $release.frontendVersion) 'Release marker does not match the deployed frontend version.'
 
 foreach ($path in @('/api/health', '/api/health/ready', '/api/health/live')) {
