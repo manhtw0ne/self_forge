@@ -1309,3 +1309,26 @@ Bước tiếp theo: browser/mobile E2E chuẩn và các provider thật vẫn l
 
 - Cần chủ dự án xác nhận phạm vi commit/push của worktree đã kiểm thử, sau đó mới có thể chạy CI remote/deploy staging. Vì worktree có nhiều thay đổi chưa commit, không an toàn để tự chọn và công bố chúng.
 - Sau deploy staging thành công: chạy `scripts/verify-deployment-release.ps1` với release digest của artifact deployed rồi nghiệm thu browser/device E2E. Provider SMTP/OAuth/payment và backup/restore managed tiếp tục là dependency riêng.
+
+## Phiên 2026-11-07 — sửa CI thiếu dữ liệu Help đã bị ignore
+
+- Push release candidate `b754f74` đã trigger hai workflow GitHub. Cả hai dừng ở frontend validation; không có deploy được chạy.
+- Đọc log CI với GitHub session hiện có xác định chính xác `ERR_MODULE_NOT_FOUND` cho `frontend/src/data/helpTopics.js` trong `src/utils/help.test.js`. File có tồn tại cục bộ nên test local xanh, nhưng rule `.gitignore` `data/` đã bỏ qua mọi thư mục con tên `data`, khiến file không có trong commit.
+- Thu hẹp rule thành `/data/` để chỉ bỏ qua dữ liệu runtime ở root repository, và đưa `frontend/src/data/helpTopics.js` (dữ liệu Help tĩnh mà `HelpPage` và regression import) vào source control. Không đổi nội dung Help hay hành vi ứng dụng.
+
+### Files thay đổi trong increment
+
+- `.gitignore`
+- `frontend/src/data/helpTopics.js`
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- `node --test src/utils/help.test.js` → **3 PASS**, gồm Help search và allowlist diagnostics.
+- Đợt `npm.cmd ci --ignore-scripts` + runtime audit, lint, **506 frontend tests**, OAuth/password tests và production build trước đó trong worktree cùng file này đều PASS. Fix chỉ làm source tree remote khớp local; CI remote cần chạy lại sau push.
+- `git diff --cached --check` → PASS trước khi commit; chỉ có warning CRLF thông thường khi Git stage trên Windows.
+
+### Rào cản và bước tiếp theo
+
+- Cần push commit này để GitHub Actions chạy lại với `helpTopics.js` hiện diện. Chỉ khi CI remote xanh mới tiếp tục staging/deploy verification.
+- Staging/public deploy, browser/device E2E, SMTP/OAuth/payment credentials và backup/restore managed vẫn chưa được xác minh.
