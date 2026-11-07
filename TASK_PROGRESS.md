@@ -1355,3 +1355,25 @@ Bước tiếp theo: browser/mobile E2E chuẩn và các provider thật vẫn l
 
 - Push fix script để CI remote kiểm chứng full image/smoke. Không deploy staging/public khi smoke chưa xanh.
 - Docker local cần được chủ dự án mở lại nếu muốn tái tạo smoke tại máy; credentials/provider và browser/device E2E vẫn là dependency ngoài repository.
+
+## Phiên 2026-11-07 — remote CI release gate đã xác minh
+
+- Commit sửa header `3b23bfe` đã được push sau fix dữ liệu Help `470bf88`. GitHub Actions chạy lại trên Linux runner, thay vì suy diễn từ Docker/PowerShell Windows local.
+- Workflow `Verify SelfForge` đã PASS frontend validation, backend với web bundle mới, PostgreSQL/Flyway integration và native web bundle (`run 42320867516`).
+- Workflow `Verify` đã PASS runtime audit, lint, frontend tests, OAuth/password tests, build, PostgreSQL/Flyway verify, Docker production image, và smoke production/restart persistence (`run 42320867502`). Smoke header normalization được thực thi thành công trong gate cuối.
+- Không trigger workflow deploy, Fly.io, Render, migration staging/production, hay bất kỳ provider thật nào trong quá trình này.
+
+### Files thay đổi trong increment
+
+- `TASK_PROGRESS.md`
+
+### Kiểm chứng
+
+- GitHub Actions `Verify SelfForge` → **PASS**: <https://github.com/manhtw0ne/self_forge/actions/runs/42320867516>.
+- GitHub Actions `Verify` → **PASS**: <https://github.com/manhtw0ne/self_forge/actions/runs/42320867502>.
+- `git status` trước cập nhật tài liệu không có thay đổi source chưa commit sau `3b23bfe`; commit tài liệu này không làm đổi artifact ứng dụng đã được CI kiểm chứng.
+
+### Rào cản và bước tiếp theo
+
+- Release candidate đã được xác minh cả local và remote CI, nhưng **chưa deploy công khai**. Staging/public deployment còn cần lựa chọn đích (Render hoặc Fly.io), database managed/JDBC secrets, quyền trigger deploy, rồi mới chạy `scripts/verify-deployment-release.ps1` với URL artifact thật.
+- Browser/device E2E, SMTP/OAuth/payment credentials và backup/restore managed vẫn chưa được nghiệm thu; payment/OAuth tiếp tục tắt mặc định.
